@@ -18,9 +18,10 @@
 
 #include "wvfork.h"
 
-WvSubProc::WvSubProc()
+void WvSubProc::init()
 {
     pid = -1;
+    memlimit = -1;
     running = false;
     estatus = 0;
 }
@@ -46,6 +47,16 @@ int WvSubProc::_startv(const char cmd[], const char * const *argv)
 	// unblock the parent.
 	close(waitfd);
 	
+        // Set memory limit, if applicable
+        if (memlimit > 0)
+        {
+            struct rlimit rlim;
+	    memset(&rlim, 0, sizeof(rlim));
+            rlim.rlim_cur = memlimit * 1024 * 1024;
+            rlim.rlim_max = memlimit * 1024 * 1024;
+            setrlimit(RLIMIT_AS, &rlim);
+        }
+
 	// run the subprocess.
 	execvp(cmd, (char * const *)argv);
 	
@@ -149,6 +160,8 @@ int WvSubProc::start_again()
 
 int WvSubProc::fork(int *waitfd)
 {
+    static WvString ldpreload, ldlibrary;
+    
     running = false;
     estatus = 0;
 
@@ -166,7 +179,26 @@ int WvSubProc::fork(int *waitfd)
 	// set up any extra environment variables
 	WvStringList::Iter i(env);
 	for (i.rewind(); i.next(); )
-	    putenv(i().edit());
+	{
+	    if (!strncmp(*i, "LD_LIBRARY_PATH=", 16)
+		&& getenv("LD_LIBRARY_PATH"))
+	    {
+		// don't override - merge!
+		ldlibrary = WvString("%s:%s", *i,
+				     getenv("LD_LIBRARY_PATH") + 16);
+		putenv(ldlibrary.edit());
+	    }
+	    else if (!strncmp(*i, "LD_PRELOAD=", 11)
+		  && getenv("LD_PRELOAD"))
+	    {
+		// don't override - merge!
+		ldpreload = WvString("%s:%s", *i,
+				     getenv("LD_PRELOAD") + 11);
+		putenv(ldpreload.edit());
+	    }
+	    else
+		putenv(i->edit());
+	}
     }
     else if (pid > 0)
     {
