@@ -109,7 +109,7 @@ static void linecmp(WvIStreamList &sl, WvBuf &buf,
 		    const char *w1, const char *w2 = NULL,
 		    const char *w3 = NULL)
 {
-    printf("Awaiting '%s' '%s' '%s'\n", w1, w2, w3);
+    printf("%s", WvString("Awaiting '%s' '%s' '%s'\n", w1, w2, w3).cstr());
     spin(sl);
     
     WvString line = wvtcl_getword(buf, "\r\n");
@@ -303,7 +303,7 @@ const char * const uniconfd1_2_args[] = {
 
 WvPipe * setup_master_daemon(bool implicit)
 {
-    WvFile stuff("/tmp/dumb.ini", O_WRONLY|O_TRUNC);
+    WvFile stuff("/tmp/dumb.ini", O_CREAT|O_WRONLY|O_TRUNC);
     stuff.print("pickles/apples/foo=1\n");
     stuff.print("pickles/mangos/bar=1\n");
     stuff.close();
@@ -339,7 +339,7 @@ const char * const uniconfd2_2_args[] = {
     NULL
 };
 
-void daemon_proxy_test(bool implicit)
+static void daemon_proxy_test(bool implicit)
 {
     WvString pipename = "/tmp/tmpfile2";
 
@@ -407,3 +407,4 @@ WVTEST_MAIN("daemon proxying - cfg the only mount")
     
     daemon_proxy_test(true);
 }
+
