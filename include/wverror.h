@@ -48,6 +48,12 @@ public:
     virtual int geterr() const
         { return errnum; }
     virtual WvString errstr() const;
+
+    /**
+     * A replacement for the operating system ::strerror() function that
+     * can map more kinds of error strings (especially in win32).
+     */
+    static WvString strerror(int errnum);
     
     /**
      * Set the errnum variable -- we have an error.  If called more than
@@ -63,6 +69,7 @@ public:
     void seterr(WvStringParm specialerr);
     void seterr(WVSTRING_FORMAT_DECL)
         { seterr(WvString(WVSTRING_FORMAT_CALL)); }
+    void seterr_both(int _errnum, WvStringParm specialerr);
     void seterr(const WvErrorBase &err);
     
     /** Reset our error state - there's no error condition anymore. */
@@ -91,6 +98,8 @@ public:
         { seterr(specialerr); }
     void set(WVSTRING_FORMAT_DECL)
         { seterr(WvString(WVSTRING_FORMAT_CALL)); }
+    void set_both(int _errnum, WvStringParm specialerr)
+        { seterr_both(_errnum, specialerr); }
     void set(const WvErrorBase &err)
         { seterr(err); }
 

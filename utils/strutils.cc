@@ -11,8 +11,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 
 #ifndef _WIN32
+//#include <uuid.h>
 #include <errno.h>
 #include <netdb.h>
 #include <unistd.h>
@@ -21,6 +23,10 @@
 #define errno GetLastError()
 #define strcasecmp _stricmp
 #include <winsock2.h>
+#include <direct.h>
+#ifndef EACCES
+#define EACCES 0xfff
+#endif
 #endif
 
 char *terminate_string(char *string, char c)
@@ -322,7 +328,7 @@ WvString url_encode(WvStringParm stuff)
         }               
         else            
         {               
-            char buf[3];
+            char buf[4];
             sprintf(buf, "%%%02x", stuff[i] & 0xff);
             retval.put(&buf, 3);
         }
@@ -546,7 +552,7 @@ WvString _sizetoa(unsigned long long digits, int size = 0)
     return WvString("%s.%s %s", units, tenths, size_name[size]);
 }
 
-WvString sizetoa(long long blocks, int blocksize)
+WvString sizetoa(unsigned long long blocks, unsigned int blocksize)
 {
     unsigned long long bytes = blocks * blocksize;
 
@@ -677,6 +683,27 @@ WvString fqdomainname()
 }
 
 
+WvString wvgetcwd()
+{
+    int maxlen = 0;
+    for (;;)
+    {
+        maxlen += 80;
+        char *name = new char[maxlen];
+        char *res = getcwd(name, maxlen);
+        if (res)
+        {
+            WvString s(name);
+            deletev name;
+            return s;
+        }
+	if (errno == EACCES || errno == ENOENT)
+	    return "."; // can't deal with those errors
+        assert(errno == ERANGE); // buffer too small
+    }
+}
+
+
 WvString metriculate(const off_t i)
 {
     WvString res;
@@ -756,4 +783,19 @@ WvString substr(WvString line, unsigned int pos, unsigned int len)
 	tmp2[len] = '\0';
 
     return ret;
+}
+
+
+FILE *wvtmpfile()
+{
+#ifndef _WIN32 // tmpfile() is really the best choice, when it works
+    return tmpfile();
+#else
+    // in win32, tmpfile() creates files in c:\...
+    // and that directory isn't always writable!  Idiots.
+    char *name = _tempnam("c:\\temp", "wvtmp");
+    FILE *f = fopen(name, "wb+");
+    free(name);
+    return f;
+#endif
 }

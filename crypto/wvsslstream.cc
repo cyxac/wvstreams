@@ -59,7 +59,7 @@ WvSSLStream::WvSSLStream(IWvStream *_slave, WvX509Mgr *x509,
     ctx = NULL;
     ssl = NULL;
     meth = NULL;
-    sslconnected = false;
+    sslconnected = ssl_stop_read = ssl_stop_write = false;
     
     wvssl_init();
     
@@ -155,7 +155,7 @@ WvSSLStream::~WvSSLStream()
 {
     close();
     
-    debug("Shutting down SSL connection.\n");
+    debug("Deleting SSL connection.\n");
     if (geterr())
 	debug("Error was: %s\n", errstr());
     
@@ -209,6 +209,12 @@ size_t WvSSLStream::uread(void *buf, size_t len)
                 break;
 	    }
             buf = (unsigned char *)buf + amount;
+	    
+	    // FIXME: this shouldn't be necessary, but it resolves weird
+	    // problems when the other end disconnects in the middle of
+	    // SSL negotiation, but only on emakela's machine.  I don't
+	    // know why.  -- apenwarr (2004/02/10)
+	    break;
         }
 
         // attempt to read
@@ -218,27 +224,32 @@ size_t WvSSLStream::uread(void *buf, size_t len)
         
 	ERR_clear_error();
         int result = SSL_read(ssl, data, avail);
+	// debug("<< SSL_read result %s for %s bytes (wanted %s)\n",
+	//      result, avail, len);
         if (result <= 0)
         {
 	    error_t err = errno;
             read_bouncebuf.unalloc(avail);
-            int errcode = SSL_get_error(ssl, result);
-            switch (errcode)
+            int sslerrcode = SSL_get_error(ssl, result);
+	    switch (sslerrcode)
             {
                 case SSL_ERROR_WANT_READ:
+		    debug("<< SSL_read() needs to wait for writable.\n");
+                    break; // wait for later
                 case SSL_ERROR_WANT_WRITE:
-//                    debug("<< SSL_read() needs to wait for readable.\n");
+		    debug("<< SSL_read() needs to wait for readable.\n");
                     break; // wait for later
                     
                 case SSL_ERROR_NONE:
                     break; // no error, but can't make progress
                     
-                case SSL_ERROR_ZERO_RETURN:
+	        case SSL_ERROR_ZERO_RETURN:
 		    debug("<< EOF: zero return\n");
-		    // signal that we want to be closed
-		    // after we return our buffer
-		    autoclose_time = time(NULL);
-		    noread(); // EOF
+		
+		    // don't do this if we're returning nonzero!
+		    // (SSL has no way to do a one-way shutdown, so if SSL
+		    // detects a read problem, it's also a write problem.)
+		    if (!total) { noread(); nowrite(); }
                     break;
 
 		case SSL_ERROR_SYSCALL:
@@ -246,19 +257,30 @@ size_t WvSSLStream::uread(void *buf, size_t len)
 		    {
 			if (result == 0)
 			{
-			    debug("<< EOF: syscall error\n");
-			    // signal that we want to be closed
-			    // after we return our buffer
-			    autoclose_time = time(NULL);
-			    noread();
+			    debug("<< EOF: syscall error "
+				  "(%s/%s, %s/%s) total=%s\n",
+				  stop_read, stop_write,
+				  isok(), cloned && cloned->isok(), total);
+			    
+			    // don't do this if we're returning nonzero!
+			    // (SSL has no way to do a one-way shutdown, so
+			    // if SSL detects a read problem, it's also a
+			    // write problem.)
+			    if (!total) { noread(); nowrite(); }
 			}
-	                break; 
 		    }
-		    debug("<< SSL_read() %s\n", strerror(errno));
+		    else
+		    {
+			debug("<< SSL_read() err=%s (%s)\n",
+			    err, strerror(err));
+			seterr_both(err, WvString("SSL read: %s",
+			    strerror(err)));
+		    }
+		    break;
                     
                 default:
                     printerr("SSL_read");
-                    seterr("SSL read error #%s", errcode);
+                    seterr("SSL read error #%s", sslerrcode);
                     break;
             }
             read_pending = false;
@@ -271,7 +293,8 @@ size_t WvSSLStream::uread(void *buf, size_t len)
         read_bouncebuf.unalloc(avail - result);
     }
 
-    // debug("<< read %s bytes\n", total);
+    // debug("<< read %s bytes (%s, %s)\n",
+    //	  total, isok(), cloned && cloned->isok());
     return total;
 }
 
@@ -328,16 +351,20 @@ size_t WvSSLStream::uwrite(const void *buf, size_t len)
         // attempt to write
         size_t used = write_bouncebuf.used();
         const unsigned char *data = write_bouncebuf.get(used);
-        
+
         ERR_clear_error();
         int result = SSL_write(ssl, data, used);
+	// debug("<< SSL_write result %s for %s bytes\n",
+	//      result, used);
         if (result <= 0)
         {
-            int errcode = SSL_get_error(ssl, result);
+            int sslerrcode = SSL_get_error(ssl, result);
             write_bouncebuf.unget(used);
-            switch (errcode)
+            switch (sslerrcode)
             {
                 case SSL_ERROR_WANT_READ:
+                    debug(">> SSL_write() needs to wait for readable.\n");
+                    break; // wait for later
                 case SSL_ERROR_WANT_WRITE:
                     debug(">> SSL_write() needs to wait for writable.\n");
                     break; // wait for later
@@ -358,16 +385,19 @@ size_t WvSSLStream::uwrite(const void *buf, size_t len)
                     break; // no error, but can't make progress
                     
                 case SSL_ERROR_ZERO_RETURN:
+		    debug(">> SSL_write zero return: EOF\n");
                     close(); // EOF
                     break;
                     
                 default:
                     printerr("SSL_write");
-                    seterr(WvString("SSL write error #%s", errcode));
+                    seterr(WvString("SSL write error #%s", sslerrcode));
                     break;
             }
             break; // wait for next iteration
         }
+	else
+	    assert((size_t)result == used);
         write_bouncebuf.zap(); // force use of same position in buffer
         
         // locate next chunk to be written
@@ -388,12 +418,15 @@ size_t WvSSLStream::uwrite(const void *buf, size_t len)
         buf = (const unsigned char *)buf + size_t(result);
     }
     
-//    debug(">> wrote %s bytes\n", total);
+    //debug(">> wrote %s bytes\n", total);
     return total;
 }
 
 void WvSSLStream::close()
 {
+    debug("Closing SSL connection (ok=%s,sr=%s,sw=%s,child=%s).\n",
+	  isok(), stop_read, stop_write, cloned && cloned->isok());
+    
     if (ssl)
     {
         ERR_clear_error();
@@ -419,6 +452,34 @@ bool WvSSLStream::isok() const
 }
 
 
+void WvSSLStream::noread()
+{
+    // WARNING: openssl always needs two-way socket communications even for
+    // one-way encrypted communications, so we don't pass noread/nowrite
+    // along to the child stream.  This should be mostly okay, though,
+    // because we'll still send it close() once we have both noread() and
+    // nowrite().
+    ssl_stop_read = true;
+    if (ssl_stop_write)
+    {
+	WvStreamClone::nowrite();
+	WvStreamClone::noread();
+    }
+}
+
+
+void WvSSLStream::nowrite()
+{
+    // WARNING: see note in noread()
+    ssl_stop_write = true;
+    if (ssl_stop_read)
+    {
+	WvStreamClone::noread();
+	WvStreamClone::nowrite();
+    }
+}
+
+
 bool WvSSLStream::pre_select(SelectInfo &si)
 {
     // the SSL library might be keeping its own internal buffers
@@ -429,7 +490,14 @@ bool WvSSLStream::pre_select(SelectInfo &si)
 	return true;
     }
 
+    // if we're not ssl_connected yet, I can guarantee we're not actually
+    // writable, so don't ask WvStreamClone to wake up just because *he's*
+    // writable.
+    bool oldwr = si.wants.writable;
+    if (!sslconnected)
+	si.wants.writable = !!writecb;
     bool result = WvStreamClone::pre_select(si);
+    si.wants.writable = oldwr;
 //    debug("in pre_select (%s)\n", result);
     return result;
 }
@@ -439,15 +507,16 @@ bool WvSSLStream::post_select(SelectInfo &si)
 {
     bool result = WvStreamClone::post_select(si);
 
-//    debug("in post_select (%s)\n", result);
-
     // SSL takes a few round trips to
     // initialize itself, and we mustn't block in the constructor, so keep
     // trying here... it is also turning into a rather cool place
     // to do the validation of the connection ;)
     if (!sslconnected && cloned && cloned->isok() && result)
     {
-//	debug("!sslconnected in post_select\n");
+	debug("!sslconnected in post_select (r=%s/%s, w=%s/%s, t=%s)\n",
+	    cloned->isreadable(), si.wants.readable,
+	    cloned->iswritable(), si.wants.writable,
+	    si.msec_timeout);
 	
 	undo_force_select(false, true, false);
 	
