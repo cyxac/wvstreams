@@ -6,11 +6,24 @@ XPATH=include
 
 include vars.mk
 
-all: config.mk $(TARGETS)
+ifeq ("$(build_xplc)", "yes")
+  MYXPLC:=xplc
+endif
+
+all: config.mk $(MYXPLC) $(TARGETS)
+
+ifeq ("$(build_xplc)", "yes")
+
+.PHONY: xplc
+xplc:
+	$(MAKE) -C xplc
+	/sbin/ldconfig -n xplc
+
+endif
 
 %.so: SONAME=$@.$(RELEASE)
 
-.PHONY: ChangeLog clean depend dust kdoc doxygen install install-shared install-dev uninstall tests dishes dist distclean realclean test
+.PHONY: clean depend dust kdoc doxygen install install-shared install-dev uninstall tests dishes dist distclean realclean test
 
 # FIXME: little trick to ensure that the wvautoconf.h.in file is there
 .PHONY: dist-hack-clean
@@ -41,10 +54,6 @@ include/wvautoconf.h.in:
 	autoheader
 endif
 
-ChangeLog:
-	rm -f ChangeLog ChangeLog.bak
-	cvs2cl --utc
-
 define wild_clean
 	@list=`echo $(wildcard $(1))`; \
 		test -z "$${list}" || sh -cx "rm -rf $${list}"
@@ -59,7 +68,7 @@ distclean: clean
 
 clean: depend dust
 	$(call wild_clean,$(TARGETS) uniconf/daemon/uniconfd \
-		$(GARBAGE) $(TESTS) \
+		$(GARBAGE) $(TESTS) tmp.ini \
 		$(shell find . -name '*.o' -o -name '*.moc'))
 
 depend:
@@ -101,7 +110,7 @@ $(TESTS): $(LIBUNICONF)
 $(addsuffix .o,$(TESTS)):
 tests: $(TESTS)
 
-include $(wildcard */rules.mk */*/rules.mk) /dev/null
+include $(filter-out xplc%,$(wildcard */rules.mk */*/rules.mk)) /dev/null
 
 -include $(shell find . -name '.*.d') /dev/null
 
@@ -111,7 +120,6 @@ test: runconfigure all tests wvtestmain
 runtests:
 	$(VALGRIND) ./wvtestmain $(TESTNAME)
 	cd uniconf/tests && ./unitest.sh
-	rm -f tmp.ini
 
 wvtestmain: wvtestmain.o \
 	$(call objects, $(shell find . -type d -name t)) \
