@@ -141,11 +141,22 @@ WvString rfc822_date(time_t _when = -1);
 /** Returns an RFC1123-compatible date made out of _when */
 WvString rfc1123_date(time_t _when);
 
+/** Return the local date (TZ applied) out of _when */
+WvString local_date(time_t _when = -1);
+
 /**
  * Similar to crypt(), but this randomly selects its own salt.
- * This function is defined in strcrypt.cc.
+ * This function is defined in strcrypt.cc.  It chooses to use the DES
+ * engine.
  */
 WvString passwd_crypt(const char *str);
+
+/**
+ * Similar to crypt(), but this randomly selects its own salt.
+ * This function is defined in strcrypt.cc.  It chooses to use the MD5
+ * engine.
+ */
+WvString passwd_md5(const char *str);
 
 /**
  * Returns a string with a backslash in front of every non alphanumeric

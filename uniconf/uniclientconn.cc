@@ -74,7 +74,7 @@ WvString UniClientConn::readmsg()
     {
 	// use lots of readahead to prevent unnecessary runs through select()
 	// during heavy data transfers.
-        char *line = getline('\n', 20480);
+        char *line = getline(0, '\n', 20480);
         if (line)
         {
             msgbuf.putstr(line);
@@ -154,7 +154,10 @@ void UniClientConn::writefail(WvStringParm payload)
 
 void UniClientConn::writevalue(const UniConfKey &key, WvStringParm value)
 {
-    writecmd(PART_VALUE, spacecat(wvtcl_escape(key), wvtcl_escape(value)));
+    if (value == WvString::null)
+        writecmd(PART_VALUE, wvtcl_escape(key));
+    else
+        writecmd(PART_VALUE, spacecat(wvtcl_escape(key), wvtcl_escape(value)));
 }
 
 
