@@ -6,7 +6,11 @@
  */
 #include "unipstoregen.h"
 #include "wvmoniker.h"
+#include "wvlinkerhack.h"
 #include <string>
+
+WV_LINK(UniPStoreGen);
+
 
 static const int MAX = 1024;
 
@@ -153,7 +157,7 @@ void UniPStoreGen::set(const UniConfKey &key, WvStringParm value)
     mbstowcs(name, key.last().printable().cstr(), MAX);
     mbstowcs(data, value.cstr(), MAX);
     
-    DWORD cbdata = DWORD((wcslen(name) + 1) * sizeof(WCHAR));
+    DWORD cbdata = DWORD((wcslen(data) + 1) * sizeof(WCHAR));
    
     HRESULT hRes = m_spPStore->WriteItem(
 	m_key, 
