@@ -19,6 +19,9 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
+#define DPRINTF(format, args...)
+//#define DPRINTF(format, args...) fprintf(stderr, "WvPty:" # format, ##args)
+
 bool WvPty::open_master()
 {
     const char *xvals = "pqrstuvwxyzPQRST";
@@ -72,8 +75,10 @@ bool WvPty::open_slave()
     return getfd() != -1;
 }
 
-WvPty::WvPty(const char *program, const char * const *argv)
-        : _pid(-1), _exit_status(242)
+WvPty::WvPty(const char *program, const char * const *argv,
+        Callback _pre_exec_cb, Callback _post_exec_cb)
+        : _pid(-1), _exit_status(242),
+          pre_exec_cb(_pre_exec_cb), post_exec_cb(_post_exec_cb)
 {
     if (!open_master()
             || (_pid = ::fork()) < 0)
@@ -86,18 +91,68 @@ WvPty::WvPty(const char *program, const char * const *argv)
     {
         // child
         int fd = getfd();
-        if (::close(fd) < 0
-                || ::setsid() < 0
-                || !open_slave()
-                || ::ioctl(getrfd(), TIOCSCTTY, NULL)
-                || ::dup2(getrfd(), STDIN_FILENO) < 0
-                || ::dup2(getwfd(), STDOUT_FILENO) < 0
-                || ::dup2(getwfd(), STDERR_FILENO) < 0
-                || (getfd() > STDERR_FILENO && ::close(getfd()) < 0))
+        if (::close(fd) < 0)
+        {
+            DPRINTF("close(fd) failed: %s\n", strerror(errno));
             goto _error;
+        }
+        if (::setsid() < 0)
+        {
+            DPRINTF("setsid() failed: %s\n", strerror(errno));
+            goto _error;
+        }
+        if (!open_slave())
+        {
+            DPRINTF("open_slave() failed: %s\n", strerror(errno));
+            goto _error;
+        }
+        ::ioctl(getrfd(), TIOCSCTTY, NULL); // This may fail in case opening the 
+                                            // ptys in open_slave proactively gave us a
+                                            // controling terminal
+        if (::dup2(getrfd(), STDIN_FILENO) < 0)
+        {
+            DPRINTF("dup2(0) failed: %s\n", strerror(errno));
+            goto _error;
+        }
+        if (::dup2(getwfd(), STDOUT_FILENO) < 0)
+        {
+            DPRINTF("dup2(1) failed: %s\n", strerror(errno));
+            goto _error;
+        }
+        if (::dup2(getwfd(), STDERR_FILENO) < 0)
+        {
+            DPRINTF("dup2(2) failed: %s\n", strerror(errno));
+            goto _error;
+        }
+        if (getfd() > STDERR_FILENO && ::close(getfd()) < 0)
+        {
+            DPRINTF("close(getfd()) failed: %s\n", strerror(errno));
+            goto _error;
+        }
+        
+	if (::fcntl(STDIN_FILENO, F_SETFL,
+	    	fcntl(STDIN_FILENO, F_GETFL) & (O_APPEND|O_ASYNC)))
+	{
+            DPRINTF("fcntl(0) failed: %s\n", strerror(errno));
+            goto _error;
+	}
+	if (::fcntl(STDOUT_FILENO, F_SETFL,
+	    	fcntl(STDOUT_FILENO, F_GETFL) & (O_APPEND|O_ASYNC)))
+	{
+            DPRINTF("fcntl(1) failed: %s\n", strerror(errno));
+            goto _error;
+	}
+	if (::fcntl(STDERR_FILENO, F_SETFL,
+	    	fcntl(STDERR_FILENO, F_GETFL) & (O_APPEND|O_ASYNC)))
+	{
+            DPRINTF("fcntl(2) failed: %s\n", strerror(errno));
+            goto _error;
+	}
        
         setfd(-1);
+        if (pre_exec_cb && !pre_exec_cb(*this)) goto _error;
         execvp(program, (char * const *)argv);
+        if (post_exec_cb) post_exec_cb(*this);
 
 _error:
         setfd(-1);
