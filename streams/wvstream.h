@@ -421,9 +421,9 @@ public:
      * print a preformatted WvString to the stream.
      * see the simple version of write() way up above.
      */
-    size_t write(const WvString &s)
+    size_t write(WvStringParm s)
         { return write(s, strlen(s)); }
-    size_t print(const WvString &s)
+    size_t print(WvStringParm s)
         { return write(s); }
 
     /**
@@ -431,11 +431,17 @@ public:
      */
     size_t print(WVSTRING_FORMAT_DECL)
 	{ return write(WvString(WVSTRING_FORMAT_CALL)); }
-    size_t operator() (const WvString &s)
+    size_t operator() (WvStringParm s)
         { return write(s); }
     size_t operator() (WVSTRING_FORMAT_DECL)
         { return write(WvString(WVSTRING_FORMAT_CALL)); }
 
+    /**
+     * set the errnum variable and close the stream -- we have an error.
+     */
+    void seterr(int _errnum);
+    void seterr(WvStringParm specialerr);
+    
 private:
     void init();
     bool wvstream_execute_called;
@@ -468,12 +474,6 @@ protected:
      */
     WvStream() : callfunc(NULL)
         { init(); rwfd = -1; }
-    
-    /**
-     * set the errnum variable and close the stream -- we have an error.
-     */
-    void seterr(int _errnum);
-    void seterr(const WvString &specialerr);
     
     /**
      * actually do the callback for an arbitrary stream.

@@ -24,7 +24,7 @@ public:
     WvMiniBuffer(size_t _size)
 	{ buffer = head = tail = new unsigned char[(size = _size) + 16]; }
     ~WvMiniBuffer()
-        { delete buffer; }
+        { delete[] buffer; }
     
     /*
      * return number of bytes total/used/left in minibuffer. Note that
@@ -162,7 +162,13 @@ public:
     /*
      * copy a WvString into the buffer, not including the terminating nul.
      */
-    void put(const WvString &str);
+    void put(WvStringParm str);
+    
+    /*
+     * add a single character to the buffer.
+     */
+    void putch(int ch)
+        { *alloc(1) = ch; }
     
     /*
      * _move_ (not copy) the contents of another WvBuffer into this buffer.

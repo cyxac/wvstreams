@@ -12,7 +12,6 @@
 
 #define WVCRYPTO_BUFSIZE  2048     // max bytes to encrypt at once
 
-
 /**
  * a very simple stream that returns randomness from /dev/urandom
  */
@@ -89,19 +88,37 @@ struct rsa_st;
 
 class WvRSAKey
 {
-    char *pub, *prv;
-    
+    int errnum;
+
+    void seterr(WvStringParm s)
+            { errstring = s; }
+    void seterr(WVSTRING_FORMAT_DECL)
+            { seterr(WvString(WVSTRING_FORMAT_CALL)); }    
+
+    void init(const char *_keystr, bool priv);
+    void hexify(struct rsa_st *rsa);
+        
 public:
     struct rsa_st *rsa;
+    char *pub, *prv;
 
+    WvRSAKey(const WvRSAKey &k);
     WvRSAKey(const char *_keystr, bool priv);
     WvRSAKey(int bits);
+    
     ~WvRSAKey();
-
+    
     char *private_str() const
         { return prv; }
     char *public_str() const
         { return pub; }
+        
+    void pem2hex(WvStringParm filename);
+    
+    volatile bool isok()
+    	{ return (errnum == 0 ? true : false); }
+    
+    WvString errstring;
 };
 
 
@@ -136,16 +153,15 @@ class WvMD5
 public:
 
    /**
-    * Create the MD5 Hash of a String
+    * Create the MD5 Hash of a String or of a File, depending on whether
+    * string_or_filename is, well, a string, or a filename.. isfile must be set
+    * to false if you want to Hash only a string.
     */
-   WvMD5(const WvString &string_to_hash);
+   WvMD5(WvStringParm string_or_filename, bool isfile=true);
 
-   /**
-    * Create the MD5 Hash of a File
-    */
-   WvMD5(FILE *file_to_hash);
+
    ~WvMD5();
-   
+      
    /**
     * MD5 seems to like unsigned char * for some reason, so make it easy
     * to return that type (Probably only be usefull inside other crypto
@@ -162,6 +178,54 @@ public:
         { return md5_hash(); }
 
    WvString md5_hash() const;
+};
+
+struct env_md_ctx_st;
+/**
+ * Message Digest (Cryptographic Hash) of either a string or a File 
+ */
+class WvMessageDigest
+{
+public:
+
+   enum DigestMode { MD5 = 0, SHA1 = 1 };
+   
+   /**
+    * Create the _mode Digest of a String 
+    */
+   WvMessageDigest(WvStringParm string, DigestMode _mode = WvMessageDigest::MD5);   
+
+   /**
+    * Create the _mode Digest of a Stream
+    */   
+   WvMessageDigest(WvStream *s, DigestMode _mode = WvMessageDigest::MD5);
+
+   ~WvMessageDigest();
+   
+   /**
+    * Add a string to the buffer_to_digest
+    */
+   void add(WvStringParm string);
+
+   /**
+    * Sometimes we just want to easily get the text digest for whatever
+    * Type of object that we're constructing...
+    */
+   operator const WvString () const
+        { return printable(); }
+
+   WvString printable() const;
+
+private:
+   struct env_md_ctx_st *mdctx;
+   unsigned char *raw_digest_value;
+   WvBuffer buf_to_digest;
+   DigestMode mode;
+
+   /**
+    * Initialize all of the silly OpenSSL Stuff.
+    */
+   void init();
 };
 
 #endif // __WVCRYPTO_H

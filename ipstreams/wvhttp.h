@@ -13,22 +13,30 @@
 class WvURL
 {
 public:
-    WvURL(const WvString &url);
+    WvURL(WvStringParm url);
+    WvURL(const WvURL &url);
     ~WvURL();
     
     bool isok() const
         { return port != 0 && (resolving || addr != NULL); }
-    const WvString &errstr() const
+    WvStringParm errstr() const
         { return err; }
     bool resolve(); // dns-resolve the hostname (returns true if done)
 
     operator WvString () const;
     
+    // not actually defined - this just prevents accidental copying
+    const WvURL &operator= (const WvURL &);
+    
     // ONLY valid if resolve() returns true!
     const WvIPPortAddr &getaddr() const
         { return *addr; }
-    const WvString &getfile() const
+    WvStringParm getfile() const
         { return file; }
+    WvStringParm gethost() const
+        { return hostname; }
+    int getport() const
+        { return port; }
     
 protected:
     WvString hostname;
@@ -44,9 +52,9 @@ struct WvHTTPHeader
 {
     WvString name, value;
     
-    WvHTTPHeader(const WvString &_name, const WvString &_value)
+    WvHTTPHeader(WvStringParm _name, WvStringParm _value)
 	: name(_name), value(_value) 
-    		{ name.unique(); value.unique(); }
+    		{}
 };
 
 
@@ -66,9 +74,10 @@ public:
     size_t num_received;
 
     /**
-     * do not delete '_url' before you delete this stream!
+     * Changed: now we copy _url in the constructor, so you can (and must)
+     * delete it whenever you want.
      */
-    WvHTTPStream(WvURL &_url);
+    WvHTTPStream(const WvURL &_url);
     ~WvHTTPStream();
 
     virtual bool isok() const;
@@ -78,7 +87,7 @@ public:
     virtual size_t uread(void *buf, size_t count);
 
 public:
-    WvURL &url;
+    WvURL url;
     WvTCPConn *http;
     State state;
 };
