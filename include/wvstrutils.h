@@ -141,12 +141,14 @@ WvString rfc822_date(time_t _when = -1);
 /** Returns an RFC1123-compatible date made out of _when */
 WvString rfc1123_date(time_t _when);
 
+#ifndef _WIN32
 /**
  * Similar to crypt(), but this randomly selects its own salt.
  * This function is defined in strcrypt.cc.
  */
 WvString passwd_crypt(const char *str);
 
+#endif
 /**
  * Returns a string with a backslash in front of every non alphanumeric
  * character in s1.
@@ -182,7 +184,7 @@ WvString getdirname(WvStringParm fullname);
  * Given a number of blocks and a blocksize (default==1 byte), return a 
  * WvString containing a human-readable representation of blocks*blocksize.
  */
-WvString sizetoa(long long blocks, int blocksize=1);
+WvString sizetoa(unsigned long long blocks, unsigned int blocksize=1);
 
 /** Give a size in Kilobyes gives a human readable size */
 WvString sizektoa(unsigned int kbytes);
@@ -344,8 +346,14 @@ WvString strreplace(WvStringParm s, WvStringParm a, WvStringParm b);
 /** Replace any consecutive instances of character c with a single one */
 WvString undupe(WvStringParm s, char c);
 
+/** Do gethostname() without a fixed-length buffer */
 WvString hostname();
+
+/** Get the fqdn of the local host, using gethostbyname() and gethostname() */
 WvString fqdomainname();
+
+/** Get the current working directory without a fixed-length buffer */
+WvString wvgetcwd();
 
 /**
  * Inserts SI-style spacing into a number
