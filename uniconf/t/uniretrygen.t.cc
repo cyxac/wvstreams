@@ -1,11 +1,11 @@
 #include "wvtest.h"
 #include "uniconfroot.h"
 #include "unitempgen.h"
-#include "unireplicategen.h"
+#include "uniretrygen.h"
 
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/signal.h>
+#include <signal.h>
 
 #define UNICONFD_SOCK "/tmp/uniretrygen-uniconfd"
 #define UNICONFD_INI "/tmp/uniretrygen-uniconfd.ini"
@@ -39,8 +39,19 @@ WVTEST_MAIN("uniconfd")
     	execv("uniconf/daemon/uniconfd", argv);
     	_exit(1);
     }
+    sleep(1);
     
-    sleep(1); // Wait for reconnect
+    // wait for connect
+    {
+    	UniConfRoot another_cfg("retry:unix:" UNICONFD_SOCK);
+    
+        for (;;)
+        {
+            another_cfg.xset("wait", "ping");
+            if (another_cfg.xget("wait") == "ping") break;
+            sleep(1);
+        }
+    }
     
     cfg["/key"].setme("value");
     WVPASS(cfg["/key"].getme() == "value");
@@ -48,8 +59,6 @@ WVTEST_MAIN("uniconfd")
     cfg.commit();
     kill(uniconfd_pid, 15);
     waitpid(uniconfd_pid, NULL, 0);
-    
-    sleep(1); // Wait for UDS to go bad
     
     WVPASS(!cfg["/key"].exists());
     
@@ -59,17 +68,81 @@ WVTEST_MAIN("uniconfd")
     	execv("uniconf/daemon/uniconfd", argv);
     	_exit(1);
     }
-
-    sleep(1); // Wait for reconnect
+    sleep(1);
     
+    // wait for connect
+    {
+    	UniConfRoot another_cfg("retry:unix:" UNICONFD_SOCK);
+    
+        for (;;)
+        {
+            another_cfg.xset("wait", "pong");
+            if (another_cfg.xget("wait") == "pong") break;
+            sleep(1);
+        }
+    }
+
     WVPASS(cfg["/key"].getme() == "value");
     
     cfg.commit();
     kill(uniconfd_pid, 15);
     waitpid(uniconfd_pid, NULL, 0);
     
-    sleep(1); // Wait for UDS to go bad
-
     WVPASS(!cfg["/key"].exists());
+}
+
+bool reconnected = false;
+void reconnect_cb(UniRetryGen &uni)
+    { reconnected = true; }
+
+WVTEST_MAIN("reconnect callback")
+{
+    signal(SIGPIPE, SIG_IGN);
+
+    pid_t uniconfd_pid;
+    
+    unlink(UNICONFD_INI);
+    
+    UniConfRoot cfg;
+    cfg.mountgen(new UniRetryGen("unix:" UNICONFD_SOCK,
+                UniRetryGen::ReconnectCallback(reconnect_cb), 100));
+
+    reconnected = false;
+    unlink(UNICONFD_SOCK);
+    if ((uniconfd_pid = fork()) == 0)
+    {
+    	execv("uniconf/daemon/uniconfd", argv);
+    	_exit(1);
+    }
+    sleep(1);
+    
+    // wait for connect
+    {
+    	UniConfRoot another_cfg("retry:unix:" UNICONFD_SOCK);
+    
+        for (;;)
+        {
+            another_cfg.xset("wait", "pong");
+            if (another_cfg.xget("wait") == "pong") break;
+            sleep(1);
+        }
+    }
+
+    cfg.getme(); // Do something to reconnect
+    WVPASS(reconnected);
+
+    kill(uniconfd_pid, 15);
+    waitpid(uniconfd_pid, NULL, 0);
+}
+
+
+WVTEST_MAIN("mount point exists")
+{
+    // bug 9769
+    UniConfRoot uniconf("temp:");
+    
+    WVPASS(uniconf["foo"].mount("retry:unix:/tmp/foobar"));
+
+    WVPASS(uniconf["foo"].exists());
 }
 
