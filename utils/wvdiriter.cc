@@ -14,6 +14,7 @@ WvDirIter::WvDirIter( WvString dirname, bool _recurse )
 : dir( dirs )
 {
     recurse = _recurse;
+    go_up   = false;
 
     DIR * d = opendir( dirname );
     if( d ) {
@@ -67,12 +68,23 @@ bool WvDirIter::next()
     do {
         bool ok = false;
         tryagain = false;
+
+        // unrecurse if the user wants to
+        if( go_up ) {
+            go_up = false;
+            if( dirs.count() > 1 ) {
+                dir.unlink();
+                dir.rewind();
+                dir.next();
+            } else
+                return( false );
+        }
+
         do {
             dent = readdir( dir->d );
             if( dent ) {
                 info.fullname = WvString( "%s/%s", dir->dirname, dent->d_name );
                 info.name = dent->d_name;
-                info.name.unique();
                 ok = ( lstat( info.fullname, &info ) == 0
                             && strcmp( dent->d_name, "." )
                             && strcmp( dent->d_name, ".." ) );
@@ -97,7 +109,8 @@ bool WvDirIter::next()
             if( dirs.count() > 1 ) {
                 dir.unlink();
                 dir.rewind();
-                tryagain = dir.next();
+                dir.next();
+                tryagain = true;
             }
         }
 

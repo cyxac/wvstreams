@@ -5,12 +5,13 @@
  * Streams with built-in cryptography on read/write.  See wvcrypto.h.
  */
 #include "wvcrypto.h"
+#include "wvsslhacks.h"
 #include "strutils.h"
 #include <assert.h>
 #include <blowfish.h>
 #include <rsa.h>
-#include <md5.h>
-
+#include <evp.h>
+#include <pem.h>
 
 ////////////////////////// WvCryptoStream
 
@@ -26,7 +27,8 @@ WvCryptoStream::WvCryptoStream(WvStream *_slave) : WvStreamClone(&slave)
 
 WvCryptoStream::~WvCryptoStream()
 {
-    // nothing special
+    if (my_cryptbuf)
+	delete[] my_cryptbuf;
 }
 
 
@@ -137,8 +139,18 @@ WvBlowfishStream::~WvBlowfishStream()
 
 
 
-WvRSAKey::WvRSAKey(const char *_keystr, bool priv)
+void WvRSAKey::init(const char *_keystr, bool priv)
 {
+    errnum = 0;
+    rsa = NULL;
+    pub = prv = NULL;
+    
+    if (!_keystr)
+    {
+	seterr("RSA keystring is null!");
+	return;
+    }
+
     // the ssl library segfaults if the buffer isn't big enough and our key
     // is unexpectedly short... sigh.  There's probably a security hole
     // somewhere in the fact that an invalid key can segfault the library.
@@ -146,7 +158,8 @@ WvRSAKey::WvRSAKey(const char *_keystr, bool priv)
     int bufsize = ((hexbytes < 2048) ? 2048 : hexbytes) + 16;
     //int bufsize = hexbytes/2;
     
-    unsigned char *keybuf = new unsigned char[bufsize], *bufp;
+    unsigned char *keybuf = new unsigned char[bufsize];
+    const unsigned char *bufp;
     char *keystr;
     RSA *rp;
     
@@ -159,47 +172,63 @@ WvRSAKey::WvRSAKey(const char *_keystr, bool priv)
     
     if (priv)
     {
-	rsa = d2i_RSAPrivateKey(&rp, &bufp, hexbytes/2);
-	prv = keystr;
+	rsa = wv_d2i_RSAPrivateKey(&rp, &bufp, hexbytes/2);
+
+	if (!rsa)
+	{
+	    seterr("RSA Key is invalid!");
+	    free(keystr);
+	}
+	else
+	{
+	    prv = keystr;
 	
-	size_t size;
-	unsigned char *iend = keybuf;
-	size = i2d_RSAPublicKey(rsa, &iend);
-	pub = (char *)malloc(size * 2 + 1);
-	hexify(pub, keybuf, size);
+	    size_t size;
+	    unsigned char *iend = keybuf;
+	    size = i2d_RSAPublicKey(rsa, &iend);
+	    pub = (char *)malloc(size * 2 + 1);
+	    ::hexify(pub, keybuf, size);
+	}
     }
     else
     {
-	rsa = d2i_RSAPublicKey(&rp, &bufp, hexbytes/2);
-	prv = NULL;
-	pub = keystr;
+	rsa = wv_d2i_RSAPublicKey(&rp, &bufp, hexbytes/2);
+	if (!rsa)
+	{
+	    seterr("RSA Key is invalid!");
+	    free(keystr);
+	}
+	else
+	{
+	    prv = NULL;
+	    pub = keystr;
+	}
     }
     
     delete[] keybuf;
 }
 
 
+WvRSAKey::WvRSAKey(const WvRSAKey &k)
+{
+    if (k.prv)
+	init(k.private_str(), true);
+    else
+	init(k.public_str(), false);
+}
+
+
+WvRSAKey::WvRSAKey(const char *_keystr, bool priv)
+{
+    init(_keystr, priv);
+}
+
+
 WvRSAKey::WvRSAKey(int bits)
 {
-    size_t size;
-    unsigned char *keybuf, *iend;
+    rsa = RSA_generate_key(bits, 0x10001, NULL, NULL);
     
-    rsa = RSA_generate_key(bits, 3, NULL, NULL);
-    
-    size = i2d_RSAPrivateKey(rsa, NULL);
-    iend = keybuf = new unsigned char[size];
-    i2d_RSAPrivateKey(rsa, &iend);
-    
-    prv = (char *)malloc(size * 2 + 1);
-    hexify(prv, keybuf, size);
-    
-    iend = keybuf;
-    size = i2d_RSAPublicKey(rsa, &iend);
-    
-    pub = (char *)malloc(size * 2 + 1);
-    hexify(pub, keybuf, size);
-    
-    delete[] keybuf;
+    hexify(rsa);
 }
 
 
@@ -213,6 +242,57 @@ WvRSAKey::~WvRSAKey()
 	RSA_free(rsa);
 }
 
+
+void WvRSAKey::pem2hex(WvStringParm filename)
+{
+    RSA *rsa = NULL;
+    FILE *fp;
+
+    fp = fopen(filename, "r");
+
+    if (!fp)
+    {
+	seterr("Unable to open %s!",filename);
+	return;
+    }
+
+    rsa = PEM_read_RSAPrivateKey(fp,NULL,NULL,NULL);
+
+    fclose(fp);
+
+    if (!rsa)
+    {
+	seterr("Unable to decode PEM File!");
+	return;
+    }
+    else
+    {
+	hexify(rsa);
+	return;
+    }
+}
+
+
+void WvRSAKey::hexify(RSA *rsa)
+{
+    size_t size;
+    unsigned char *keybuf, *iend;
+
+    size = i2d_RSAPrivateKey(rsa, NULL);
+    iend = keybuf = new unsigned char[size];
+    i2d_RSAPrivateKey(rsa, &iend);
+    
+    prv = (char *)malloc(size * 2 + 1);
+    ::hexify(prv, keybuf, size);
+    
+    iend = keybuf;
+    size = i2d_RSAPublicKey(rsa, &iend);
+    
+    pub = (char *)malloc(size * 2 + 1);
+    ::hexify(pub, keybuf, size);
+
+    delete[] keybuf;
+}
 
 
 /////////////////////////// WvRSAStream
@@ -319,57 +399,132 @@ size_t WvRSAStream::uwrite(const void *buf, size_t size)
     return totalwrite;
 }
 
-WvMD5::WvMD5(const WvString &string_to_hash)
+WvMD5::WvMD5(WvStringParm string_or_filename, bool isfile)
 {
     MD5_CTX ctx;
     unsigned char temp[20];
 
-    MD5_Init(&ctx);
-    MD5_Update(&ctx,(const unsigned char *)string_to_hash.cstr(),
-		strlen(string_to_hash));
-    MD5_Final(temp, &ctx);
-    md5_hash_value = (unsigned char *)calloc(1,sizeof(temp));
-    memcpy(md5_hash_value,temp,sizeof(temp));
-}
+    if (isfile)
+    {
+	unsigned char buf[1024];
+	int n;
+	FILE *file_to_hash;
+	
+	file_to_hash = fopen(string_or_filename,"r");
+	
+	if (file_to_hash != NULL)
+	{
+	    MD5_Init(&ctx);
+	    while ((n = fread(buf, 1, sizeof(buf), file_to_hash)) > 0)
+		MD5_Update(&ctx, buf, n);
+	    MD5_Final(temp, &ctx);
+	    if (ferror(file_to_hash))
+		md5_hash_value = NULL;
+	    else
+	    {
+		md5_hash_value = (unsigned char *)calloc(1,sizeof(temp));
+		memcpy(md5_hash_value,temp,sizeof(temp));
+	    }
 
-WvMD5::WvMD5(FILE *file_to_hash)
-{
-    unsigned char buf[1024];
-    unsigned char temp[20];
-    MD5_CTX ctx;
-    int n;
-
-    MD5_Init(&ctx);
-    while ((n = fread(buf, 1, sizeof(buf), file_to_hash)) > 0)
-            MD5_Update(&ctx, buf, n);
-    MD5_Final(temp, &ctx);
-    if (ferror(file_to_hash))
-	md5_hash_value = NULL;
+	    fclose(file_to_hash);
+	}
+	else
+	{
+	    md5_hash_value = NULL;
+	}
+    }
     else
     {
-    	md5_hash_value = (unsigned char *)calloc(1,sizeof(temp));
-    	memcpy(md5_hash_value,temp,sizeof(temp));
+	MD5_Init(&ctx);
+	MD5_Update(&ctx,(const unsigned char *)string_or_filename.cstr(),
+		   strlen(string_or_filename));
+	MD5_Final(temp, &ctx);
+	md5_hash_value = (unsigned char *)calloc(1,sizeof(temp));
+	memcpy(md5_hash_value,temp,sizeof(temp));
     }
 }
+
 
 WvMD5::~WvMD5()
 {
     free(md5_hash_value);
 }
 
+
 WvString WvMD5::md5_hash() const
 {
     int count;
     unsigned char *temp;
     WvString hash_value("");
-
+    
     temp = md5_hash_value;
     for (count = 0; count < 16; count++)
     {
-	char buf[2];
-	snprintf(buf,2,"%02x", *temp++);
+	char buf[3];
+	snprintf(buf,3,"%02x", *temp++);
 	hash_value.append(buf);
     }
-
+    
     return hash_value;
+}
+
+WvMessageDigest::WvMessageDigest(WvStringParm string, DigestMode _mode)
+{
+    mode = _mode;
+    init();
+    if (!!string)
+	EVP_DigestUpdate(mdctx, string, strlen(string));
+}
+
+WvMessageDigest::WvMessageDigest(WvStream *s, DigestMode _mode)
+{
+    mode = _mode;
+    init();
+    // FIXME: !!!
+}
+
+WvMessageDigest::~WvMessageDigest()
+{
+//    EVP_MD_CTX_cleanup(mdctx);
+}
+
+void WvMessageDigest::add(WvStringParm string)
+{
+    EVP_DigestUpdate(mdctx, string, strlen(string));
+}
+
+WvString WvMessageDigest::printable() const
+{
+    int len, i;
+    WvString digest_value("");
+
+//    EVP_DigestFinal_ex(mdctx, raw_digest_value, &len);
+    len = 0;
+
+    for(i = 0; i < len; i++) 
+    {
+	char buf[2];
+	snprintf(buf,2,"%02x", raw_digest_value[i]);
+	digest_value.append(buf);
+    }
+
+    return digest_value;
+}
+
+void WvMessageDigest::init()
+{
+    const EVP_MD *md;
+
+    OpenSSL_add_all_digests();
+//    EVP_MD_CTX_init(mdctx);
+
+    switch(mode)
+    {
+	case MD5:
+	    md = EVP_get_digestbyname("MD5");
+	case SHA1:
+	    md = EVP_get_digestbyname("SHA1");
+    }
+
+//    EVP_DigestInit_ex(mdctx, md, NULL);
 }

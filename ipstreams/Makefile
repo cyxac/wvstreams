@@ -1,28 +1,25 @@
 TOPDIR=..
 include $(TOPDIR)/wvrules.mk
 
-XPATH=.. ../utils ../streams
+CXXFLAGS += -I../include
 
-TESTS=tcptest udptest udp2test listentest unixtest ulistentest \
-	resolvertest routetest \
-	conttest aliastest simpleconn httptest
+XPATH=.. ../utils ../streams ../linuxstreams
 
-default: all $(TESTS)
+default: all
 
 all: ipstreams.libs
 
-ipstreams.libs: wvaddr.o wvtcp.o wvudp.o wvresolver.o wvhttp.o wvinterface.o \
-		wviproute.o wvipaliaser.o wvipfirewall.o wvunixsocket.o \
-		../configfile/configfile.libs
+ipstreams.libs: wvaddr.o wvtcp.o wvudp.o wvresolver.o \
+		wvurl.o wvhttp.o wvunixsocket.o \
+		../uniconf/uniconf.libs \
+                ../linuxstreams/linuxstreams.libs
 
 ipstreams.a: ipstreams.libs
 
-#LIBS=$(EFENCE)
-tcptest udptest udp2test listentest unixtest ulistentest \
-	resolvertest routetest \
-	conttest aliastest simpleconn httptest simpleconn: \
-		ipstreams.a
-
 clean:
-	rm -f $(TESTS)
+	$(MAKE) -C tests clean
+
+.PHONY: tests
+tests: ipstreams.libs
+	$(MAKE) -C tests
 

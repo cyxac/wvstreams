@@ -10,10 +10,9 @@
 #include "wvconf.h"
 
 
-WvConfigSection::WvConfigSection(const WvString &_name)
+WvConfigSection::WvConfigSection(WvStringParm _name)
 	: name(_name)
 {
-    name.unique();
 }
 
 
@@ -24,7 +23,7 @@ WvConfigSection::~WvConfigSection()
 }
 
 
-WvConfigEntry *WvConfigSection::operator[] (const WvString &ename)
+WvConfigEntry *WvConfigSection::operator[] (WvStringParm ename)
 {
     Iter i(*this);
 
@@ -38,16 +37,18 @@ WvConfigEntry *WvConfigSection::operator[] (const WvString &ename)
 }
 
 
-const char *WvConfigSection::get(const WvString &entry, const char *def_val)
+const char *WvConfigSection::get(WvStringParm entry, const char *def_val)
 {
     WvConfigEntry *e = (*this)[entry];
     return e ? (const char *)e->value : def_val;
 }
 
 
-void WvConfigSection::set(const WvString &entry, const WvString &value)
+void WvConfigSection::set(WvStringParm entry, WvStringParm value)
 {
-    WvConfigEntry *e = (*this)[entry];
+    WvString clean_entry = entry;
+    trim_string(clean_entry.edit());
+    WvConfigEntry *e = (*this)[clean_entry];
     
     // need to delete the entry?
     if (!value || !value[0])
@@ -58,18 +59,17 @@ void WvConfigSection::set(const WvString &entry, const WvString &value)
 
     // otherwise, add the entry requested
     if (e)
-    {
 	e->set(value);
-	e->value.unique();
-    }
     else
-	append(new WvConfigEntry(entry, value), true);
+	append(new WvConfigEntry(clean_entry, value), true);
 }
 
 
-void WvConfigSection::quick_set(const WvString &entry, const WvString &value)
+void WvConfigSection::quick_set(WvStringParm entry, WvStringParm value)
 {
-    append(new WvConfigEntry(entry, value), true);
+    WvString clean_entry = entry;
+    trim_string(clean_entry.edit());
+    append(new WvConfigEntry(clean_entry, value), true);
 }
 
 
@@ -79,7 +79,7 @@ void WvConfigSection::dump(WvStream &fp)
 
     for (i.rewind(); i.next(); )
     {
-	WvConfigEntry &e = i;
+	WvConfigEntry &e = *i;
 	if (e.value && e.value[0])
 	    fp.print("%s = %s\n", e.name, e.value);
 	else

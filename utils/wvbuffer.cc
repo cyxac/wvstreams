@@ -18,7 +18,7 @@
 #define Dprintf if (0) printf
 #endif
 
-#define MINSIZE 128
+#define MINSIZE 1024
 
 ///////////////////// WvMiniBuffer
 
@@ -304,7 +304,7 @@ void WvBuffer::put(const void *data, size_t num)
 }
 
 
-void WvBuffer::put(const WvString &str)
+void WvBuffer::put(WvStringParm str)
 {
     if (!!str)
 	put(str, strlen(str));
@@ -328,17 +328,14 @@ void WvBuffer::merge(WvBuffer &buf)
 }
 
 
-WvString WvBuffer::getstr()
+WvFastString WvBuffer::getstr()
 {
-    WvString s;
-    size_t len = used();
-    s.setsize(len + 1);
+    // add a terminating NUL, in case there isn't one
+    put("", 1);
     
-    char *cptr = s.edit();
-    memcpy(cptr, get(len), len);
-    cptr[len] = 0;
-    
-    return s;
+    // grab the string and return it.  If nobody ever assigns it to a WvString
+    // (as opposed to a WvStringParm), there's no need to ever copy the string!
+    return (const char *)get(used());
 }
 
 
@@ -349,7 +346,7 @@ size_t WvBuffer::strchr(unsigned char ch)
     
     for (i.rewind(); i.next(); )
     {
-	WvMiniBuffer &b = i;
+	WvMiniBuffer &b = *i;
 	
 	t = b.strchr(ch);
 	
@@ -371,7 +368,7 @@ size_t WvBuffer::match(const unsigned char chlist[], size_t numch,
     
     for (i.rewind(); i.next(); )
     {
-	WvMiniBuffer &b = i;
+	WvMiniBuffer &b = *i;
 	
 	t = b.match(chlist, numch, reverse);
 	

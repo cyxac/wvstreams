@@ -10,116 +10,8 @@
 #include <assert.h>
 
 
-//////////////////////////////////////// WvURL
 
-
-// Split up the URL into a hostname, a port, and the rest of it.
-WvURL::WvURL(const WvString &url) : err("No error")
-{
-    WvString work(url);
-    char *cptr, *wptr = work.edit();
-    
-    port = 0; // error condition by default
-    addr = NULL;
-    resolving = true;
-    
-    if (strncmp(wptr, "http://", 7)) // NOT equal
-    {
-	err = "WvURL can only handle HTTP URLs.";
-	return;
-    }
-    wptr += 7;
-    
-    hostname = wptr;
-    hostname.unique();
-    
-    cptr = strchr(wptr, '/');
-    if (!cptr) // no path given
-	file = "/";
-    else
-    {
-	file = cptr;
-	file.unique();
-	*cptr = 0;
-    }
-    
-    cptr = strchr(wptr, ':');
-    if (!cptr)
-	port = 80;
-    else
-    {
-	port = atoi(cptr+1);
-	*cptr = 0;
-    }
-
-    hostname = wptr;
-    hostname.unique();
-    
-    resolve();
-}
-
-
-WvURL::~WvURL()
-{
-    if (addr) delete addr;
-}
-
-
-bool WvURL::resolve()
-{
-    const WvIPAddr *ip;
-    int numaddrs;
-    
-    numaddrs = dns.findaddr(0, hostname, &ip);
-    if (!numaddrs) // error condition
-    {
-	err = WvString("Host %s could not be found.", hostname);
-	resolving = false;
-	return false;
-    }
-    else if (numaddrs < 0) // still waiting
-    {
-	resolving = true;
-	return false;
-    }
-    else // got at least one address
-    {
-	resolving = false;
-	if (addr) delete addr;
-	addr = new WvIPPortAddr(*ip, port);
-	return true;
-    }
-}
-
-
-// Print out the URL, using the port name (if it's not 80), and either the 
-// hostname (if we know it) or the address (if we know that instead.)
-WvURL::operator WvString () const
-{
-    if (!isok())
-	return WvString("(Invalid URL: %s)", err);
-    
-    WvString portstr("");
-    if (port && port != 80)
-	portstr = WvString(":%s", port);
-    if (hostname)
-	return WvString("http://%s%s%s", hostname, portstr, file);
-    else if (addr)
-	return WvString("http://%s%s%s", *addr, portstr, file);
-    else
-    {
-	assert(0);
-	return WvString("(Invalid URL)");
-    }
-}
-
-
-
-//////////////////////////////////////// WvHTTPStream
-
-
-
-WvHTTPStream::WvHTTPStream(WvURL &_url)
+WvHTTPStream::WvHTTPStream(const WvURL &_url)
 	: WvStreamClone((WvStream **)&http), headers(7), client_headers(7),
           url(_url)
 {
@@ -164,7 +56,7 @@ const char *WvHTTPStream::errstr() const
     else if (!url.isok())
 	return url.errstr();
     else
-	return "Unknown error!";
+	return "Unknown error! (no stream yet)";
 }
 
 
@@ -193,15 +85,18 @@ bool WvHTTPStream::pre_select(SelectInfo &si)
 
 	// otherwise, we just finished connecting:  start transfer.
 	state = ReadHeader1;
-	print("GET %s HTTP/1.0\n", url.getfile());
+	delay_output(true);
+	print("GET %s HTTP/1.0\r\n", url.getfile());
+	print("Host: %s:%s\r\n", url.gethost(), url.getport());
         {
             WvHTTPHeaderDict::Iter i(client_headers);
             for (i.rewind(); i.next(); )
             {
-                print("%s: %s\n", i().name, i().value);
+                print("%s: %s\r\n", i().name, i().value);
             }
         }
-        print("\n");
+        print("\r\n");
+	delay_output(false);
 	
 	// FALL THROUGH!
 	
