@@ -20,11 +20,11 @@ struct WvCont::Data
     WvTaskMan *taskman;
     WvTask *task;
     
-    Callback cb;        // the callback we want to call inside our WvTask
-    R ret;
-    P1 p1;
+    WvContCallback cb;        // the callback we want to call inside our WvTask
+    void *ret;
+    void *p1;
     
-    Data(const Callback &_cb, size_t _stacksize) : cb(_cb)
+    Data(const WvContCallback &_cb, size_t _stacksize) : cb(_cb)
         { links = 1; finishing = false; stacksize = _stacksize; mydepth = 0;
 	     taskman = WvTaskMan::get(); 
 	     task = NULL; report(); }
@@ -51,7 +51,7 @@ WvCont::WvCont(const WvCont &cb)
 }
 
 
-WvCont::WvCont(const Callback &cb, unsigned long _stacksize)
+WvCont::WvCont(const WvContCallback &cb, unsigned long _stacksize)
 {
     data = new Data(cb, (size_t)_stacksize);
 }
@@ -69,6 +69,7 @@ WvCont::~WvCont()
     if (data->links == 1) // I'm the last link, and it's not currently running
     {
 	data->finishing = true;
+	data->p1 = NULL; // don't re-pass invalid data
 	while (data->task && data->task->isrunning())
 	    call();
     }
@@ -117,7 +118,10 @@ void *WvCont::_call(Data *data)
 	{
 	    data->taskman->run(*data->task);
 	    if (data->links == 1)
+	    {
 		data->finishing = true; // make WvCont::isok() false
+		data->p1 = NULL; // don't re-pass invalid data
+	    }
 	} while (data->finishing && data->task && data->task->isrunning());
 	assert(data->links);
     } while (taskdepth > data->mydepth);
@@ -125,16 +129,16 @@ void *WvCont::_call(Data *data)
     taskdepth--;
     data->mydepth = 0;
 
-    R ret = data->ret;
+    void *ret = data->ret;
     data->unlink();
     curdata = olddata;
     return ret;
 }
 
 
-WvCont::R WvCont::operator() (P1 p1)
+void *WvCont::operator() (void *p1)
 {
-    data->ret = R(-42);
+    data->ret = reinterpret_cast<void*>(-42);
     
     if (!data->task)
 	data->task = data->taskman->start("wvcont", bouncer, data,
@@ -158,7 +162,7 @@ WvCont WvCont::current()
 }
 
 
-WvCont::P1 WvCont::yield(R ret)
+void *WvCont::yield(void *ret)
 {
     assert(curdata);
     assert(curdata->task == curdata->taskman->whoami());
@@ -176,7 +180,10 @@ WvCont::P1 WvCont::yield(R ret)
 
 bool WvCont::isok()
 {
-    assert(curdata);
+    // if we're not using WvCont, it's not okay to yield
+    if (!curdata)
+	return false;
+
     assert(curdata->task == curdata->taskman->whoami());
     return !curdata->finishing;
 }

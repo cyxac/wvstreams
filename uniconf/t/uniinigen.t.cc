@@ -26,6 +26,7 @@ static int childcount(UniConf cfg)
 
 WVTEST_MAIN("commit-without-refresh")
 {
+
     UniConfRoot cfg("ini:/dev/does-not-exist");
     cfg.commit();
     cfg.refresh();
@@ -72,6 +73,19 @@ WVTEST_MAIN("parsing3")
     UniConfRoot cfg("ini:tmp.ini");
     WVPASSEQ(cfg.getme(), "foo");
     WVFAIL(cfg.haschildren());
+}
+
+
+WVTEST_MAIN("Setting and getting (bug 6090)")
+{
+    UniConfRoot cfg("ini:tmp.ini");
+    
+    cfg["mrwise"].setme("{{bork!");
+    cfg.commit();
+    WVPASSEQ(cfg["mrwise"].getme(), "{{bork!");
+
+    UniConfRoot cfg2("ini:tmp.ini");
+    WVPASSEQ(cfg2["mrwise"].getme(), "{{bork!");
 }
 
 

@@ -14,12 +14,13 @@ NO_CONFIGURE_TARGETS:=
 NO_CONFIGURE_TARGETS+=clean ChangeLog depend dust configure dist \
 		distclean realclean
 
+TARGETS += libwvbase.so libwvbase.a
 TARGETS += libwvutils.so libwvutils.a
 TARGETS += libwvstreams.so libwvstreams.a
 TARGETS += libuniconf.so libuniconf.a
 TARGETS += wvtestmain.o
 TARGETS += uniconf/daemon/uniconfd uniconf/tests/uni
-GARBAGE += wvtestmain.o tmp.ini
+GARBAGE += wvtestmain.o tmp.ini .wvtest-total
 
 #ifneq ("$(with_swig)", "no")
 #  ifneq ("$(with_tcl)", "no")
@@ -60,7 +61,7 @@ endif
 TARGETS_SO := $(filter %.so,$(TARGETS))
 TARGETS_A := $(filter %.a,$(TARGETS))
 
-GARBAGE += ChangeLog $(wildcard lib*.so.*)
+GARBAGE += $(wildcard lib*.so.*)
 
 DISTCLEAN += autom4te.cache config.mk config.log config.status \
 		include/wvautoconf.h config.cache reconfigure
@@ -117,11 +118,11 @@ ifeq ("$(enable_testgui)", "no")
 WVTESTRUN=env
 endif
 
-ifneq ("$(enable_rtti)", "yes")
+ifeq ("$(enable_rtti)", "no")
 CXXFLAGS+=-fno-rtti
 endif
 
-ifneq ("$(enable_exceptions)", "yes")
+ifeq ("$(enable_exceptions)", "no")
 CXXFLAGS+=-fno-exceptions
 endif
 
@@ -141,14 +142,22 @@ ifneq ("$(with_qdbm)", "no")
   libwvutils.so-LIBS+=-L. -lqdbm
 endif
 
-libwvstreams.so: LIBS+=-lxplc-cxx
+libwvbase.so: LIBS+=-lxplc-cxx
 
 ifneq ("$(with_fam)", "no")
   libwvstreams.so: -lfam
 endif
 
+ifneq ("$(with_openslp)", "no")
+  libwvstreams.so: -lslp
+endif
+
 ifneq ("$(with_pam)", "no")
   libwvstreams.so: -lpam
+endif
+
+ifneq ("$(with_popt)", "no")
+  libwvutils.so: LIBS+=-lpopt
 endif
 
 LDLIBS := -lgcc $(LDLIBS) \
@@ -159,32 +168,86 @@ RELEASE?=$(PACKAGE_VERSION)
 
 include $(filter-out xplc/%,$(wildcard */vars.mk */*/vars.mk)) /dev/null
 
-libwvutils.a libwvutils.so: $(call objects,utils)
+# LDFLAGS+=-z defs
+
+BASEOBJS= \
+	utils/wvbuffer.o utils/wvbufferstore.o \
+	utils/wvcont.o \
+	utils/wverror.o \
+	streams/wvfdstream.o \
+	utils/wvfork.o \
+	utils/wvhash.o \
+	utils/wvlinklist.o \
+	utils/wvmoniker.o \
+	utils/wvscatterhash.o utils/wvsorter.o \
+	utils/wvstring.o utils/wvstringlist.o \
+	utils/strutils.o \
+	utils/wvtask.o \
+	utils/wvtimeutils.o \
+	utils/wvvector.o \
+	streams/wvistreamlist.o \
+	streams/wvlog.o \
+	streams/wvstream.o \
+	uniconf/uniconf.o uniconf/uniconf_c.o \
+	uniconf/uniconfgen.o uniconf/uniconfkey.o uniconf/uniconfroot.o \
+	uniconf/unihashtree.o \
+	uniconf/unimountgen.o \
+	uniconf/unitempgen.o \
+	$(BASEOBJS_EXTRA)
+
+BASEOBJS_EXTRA= \
+	utils/wvbackslash.o \
+	utils/wvencoder.o \
+	utils/wvtclstring.o \
+	uniconf/uniinigen.o \
+	streams/wvfile.o \
+	streams/wvstreamclone.o  \
+	streams/wvconstream.o
+
+# print the sizes of all object files making up libwvbase, to help find
+# optimization targets.
+basesize:
+	size --total $(BASEOBJS)
+
+micro: micro.o libwvbase.so
+
+libwvbase.a libwvbase.so: $(BASEOBJS)
+
+libwvutils.a libwvutils.so: $(filter-out $(BASEOBJS),$(call objects,utils))
+libwvutils.so: libwvbase.so
 libwvutils.so: -lz -lcrypt
 
-libwvstreams.a libwvstreams.so: $(call objects,configfile crypto ipstreams linuxstreams streams urlget)
-libwvstreams.so: libwvutils.so
+libwvstreams.a libwvstreams.so: $(filter-out $(BASEOBJS), \
+	$(call objects,configfile crypto ipstreams \
+		linuxstreams streams urlget))
+libwvstreams.so: libwvutils.so libwvbase.so
 libwvstreams.so: LIBS+=-lssl -lcrypto
 
-libuniconf.a libuniconf.so: $(call objects,uniconf)
-libuniconf.so: libwvstreams.so libwvutils.so
+libuniconf.a libuniconf.so: $(filter-out $(BASEOBJS), \
+	$(call objects,uniconf))
+libuniconf.so: libwvstreams.so libwvutils.so libwvbase.so
 
 libwvoggvorbis.a libwvoggvorbis.so: $(call objects,oggvorbis)
-libwvoggvorbis.so: -logg -lvorbis -lvorbisenc libwvutils.so
+libwvoggvorbis.so: -logg -lvorbis -lvorbisenc libwvutils.so libwvbase.so
 
 libwvoggspeex.a libwvoggspeex.so: $(call objects,oggspeex)
-libwvoggspeex.so: -logg -lspeex libwvutils.so
+libwvoggspeex.so: -logg -lspeex libwvutils.so libwvbase.so
 
 libwvfft.a libwvfft.so: $(call objects,fft)
-libwvfft.so: -lfftw -lrfftw libwvutils.so
+libwvfft.so: -lfftw -lrfftw libwvutils.so libwvbase.so
 
 libwvtelephony.a libwvtelephony.so: $(call objects,telephony)
 libwvtelephony.so: 
 
 ifeq ("$(wildcard /usr/lib/libqt-mt.so)", "/usr/lib/libqt-mt.so")
   libwvqt.so-LIBS+=-lqt-mt
-else
-  libwvqt.so-LIBS+=-lqt
+else 
+  # RedHat has a pkgconfig file we can use to sort out this mess..
+  ifeq ("$(wildcard /usr/lib/pkgconfig/qt-mt.pc)", "/usr/lib/pkgconfig/qt-mt.pc")
+    libwvqt.so-LIBS+=`pkg-config --libs qt-mt`
+  else
+    libwvqt.so-LIBS+=-lqt
+  endif
 endif
 libwvqt.a libwvqt.so: $(call objects,qt)
 libwvqt.so: libwvutils.so libwvstreams.so

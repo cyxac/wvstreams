@@ -22,11 +22,16 @@
 #include <unistd.h>
 #endif
 
-WvDailyEvent::WvDailyEvent(int _first_hour, int _num_per_day)
+#define NUM_MINS_IN_DAY (24*60)
+#define NUM_SECS_IN_DAY (60*NUM_MINS_IN_DAY)
+
+WvDailyEvent::WvDailyEvent(int _first_hour, int _num_per_day, bool _skip_first)
 {
     need_reset = false;
+    skip_event = true;
+    needs_event = false;
     prev = time(NULL);
-    configure(_first_hour, _num_per_day);
+    configure(_first_hour, _num_per_day, _skip_first);
 }
 
 
@@ -35,7 +40,9 @@ bool WvDailyEvent::pre_select(SelectInfo &si)
 {
     if (num_per_day && !need_reset)
     {
-	time_t now = time(NULL), next = next_event();
+	time_t now = time(NULL);
+	time_t next = next_event();
+
 	assert(prev);
 	assert(next);
 	assert(prev > 100000);
@@ -43,6 +50,7 @@ bool WvDailyEvent::pre_select(SelectInfo &si)
 	if (now >= next)
 	{
 	    need_reset = true;
+            needs_event = false;
 	    prev = next;
 	}
     }
@@ -83,50 +91,49 @@ void WvDailyEvent::set_num_per_day(int _num_per_day)
     if (num_per_day < 0)
 	num_per_day = 1;
 
-    if (num_per_day > 24*60*60)
-        num_per_day = 24*60*60;
+    if (num_per_day > NUM_SECS_IN_DAY)
+        num_per_day = NUM_SECS_IN_DAY;
         
-    time_t max = num_per_day ? (24*60*60)/num_per_day : 6*60*60;
+    time_t max = num_per_day ? NUM_SECS_IN_DAY/num_per_day : 6*60*60;
     if (max > 6*60*60)
 	max = 6*60*60; // unless that's a very long time, 6 hrs
 
     // don't start until at least one period has gone by
-    not_until = time(NULL) + max;
     prev = time(NULL);
+    not_until = prev + max;
 }
 
 
-void WvDailyEvent::configure(int _first_hour, int _num_per_day)
+void WvDailyEvent::configure(int _first_hour, int _num_per_day, bool _skip_first)
 {
     first_hour = _first_hour;
+    skip_first = _skip_first;
 
     // Don't let WvDailyEvents occur more than once a minute. -- use an alarm
     // instead
-    if (_num_per_day > 24*60)
-        _num_per_day = 24*60;
+    if (_num_per_day > NUM_MINS_IN_DAY)
+        _num_per_day = NUM_MINS_IN_DAY;
 
     set_num_per_day(_num_per_day);
 }
 
-
 // the daily event occurs each day at first_hour on the hour, or at
 // some multiple of the interval *after* that hour.
-time_t WvDailyEvent::next_event() const
+time_t WvDailyEvent::next_event()
 {
     if (!num_per_day) // disabled
 	return 0;
-    
-    time_t start, next, interval = 24*60*60/num_per_day;
-    struct tm *tm;
-    
+
     assert(prev);
-    start = prev + interval;
     
+    time_t interval = NUM_SECS_IN_DAY/num_per_day;
+    time_t start = prev + interval;
+   
     // find the time to start counting from (up to 24 hours in the past)
-    tm = localtime(&start);
+    struct tm *tm = localtime(&start);
     if (tm->tm_hour < first_hour)
     {
-	start = prev - 24*60*60 + 1; // this time yesterday
+	start = prev - NUM_SECS_IN_DAY + 1; // this time yesterday
 	tm = localtime(&start);
     }
     tm->tm_hour = first_hour; // always start at the given hour
@@ -135,15 +142,31 @@ time_t WvDailyEvent::next_event() const
     
     // find the next event after prev that's a multiple of 'interval'
     // since 'start'
-    next = prev + interval;
+    time_t next = prev + interval;
     if ((next - start)%interval != 0)
 	next = start + (next - start)/interval * interval + interval;
     
-    // too soon after configuration - skip the event
     assert(next);
     assert(next > 100000);
-    while (next < not_until)
-    	next += interval;
+
+    time_t time_till_event = next - time(NULL);
+
+    if (!skip_event && time_till_event >= 1*60*60)
+        needs_event = true;
+
+    if (skip_event || !needs_event)
+    {
+	// set 'next' to be the next multiple of 'interval' after 'not_until'
+	// (could possibly be 'not_until' also)
+	if (skip_first && next < not_until)
+	{ 
+	    time_t diff = not_until - next;
+	    next += (diff/interval) * interval;
+
+	    if (diff % interval)
+		next += interval;
+	}
+    }
 
     return next;
 }

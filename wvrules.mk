@@ -39,11 +39,14 @@ ifneq ($(wildcard $(WVSTREAMS_SRC)/config.mk),)
 endif
 
 ifneq ("$(with_xplc)", "no")
-  LDFLAGS+=-L$(with_xplc)
+ifneq ("$(with_xplc)", "")
+  LDFLAGS:=-L$(with_xplc) $(LDFLAGS)
+endif
   LIBXPLC=-lxplc-cxx -lxplc
 endif
 
-LIBWVUTILS=$(WVSTREAMS_LIB)/libwvutils.so $(LIBXPLC)
+LIBWVBASE=$(WVSTREAMS_LIB)/libwvbase.so $(LIBXPLC)
+LIBWVUTILS=$(WVSTREAMS_LIB)/libwvutils.so $(LIBWVBASE)
 LIBWVSTREAMS=$(WVSTREAMS_LIB)/libwvstreams.so $(LIBWVUTILS)
 LIBWVOGG=$(WVSTREAMS_LIB)/libwvoggvorbis.so $(LIBWVSTREAMS)
 LIBUNICONF=$(WVSTREAMS_LIB)/libuniconf.so $(LIBWVSTREAMS)
@@ -65,7 +68,7 @@ XX_LIBS := $(XX_LIBS) $(shell $(CC) -lsupc++ -lgcc_eh 2>&1 | grep -q "undefined 
 ifeq ("$(enable_debug)", "yes")
   DEBUG:=1
 else
-  DEBUG:=
+  DEBUG:=0
 endif
 
 ifeq ("$(enable_fatal_warnings)", "yes")
@@ -127,11 +130,14 @@ xsubdirs=$(sort $(wildcard $1/*/subdir.mk)) /dev/null
 default: all
 
 # default "test" rule does nothing...
-.PHONY: test
+.PHONY: test runtests
 test:
+runtests:
 
 %/test:
 	$(MAKE) -C $(dir $@) test
+
+$(LIBXPLC):
 
 $(WVSTREAMS_SRC)/rules.local.mk:
 	@true
@@ -187,19 +193,36 @@ CFLAGS+=$(CPPFLAGS)
 CXXFLAGS+=$(CPPFLAGS)
 
 ifeq ($(VERBOSE),1)
-  COMPILE_MSG = 
-  LINK_MSG =
-  DEPEND_MSG=
+  COMPILE_MSG :=
+  LINK_MSG :=
+  DEPEND_MSG :=
+  SYMLINK_MSG :=
 else
   COMPILE_MSG = @echo compiling $@...;
   LINK_MSG = @echo linking $@...;
   #DEPEND_MSG = @echo "   depending $@...";
-  DEPEND_MSG = @
+  DEPEND_MSG := @
+  SYMLINK_MSG := @
 endif
 
 # any rule that depends on FORCE will always run
 .PHONY: FORCE
 FORCE:
+
+ifeq ($(LN_S),)
+LN_S := ln -s
+endif
+ifeq ($(LN),)
+LN := ln
+endif
+
+# Create symbolic links
+# usage: $(wvlns,source,dest)
+wvlns=$(SYMLINK_MSG)$(LN_S) -f $1 $2
+
+# Create hard links
+# usage: $(wvln,source,dest)
+wvln=$(SYMLINK_MSG)$(LN) -f $1 $2
 
 # usage: $(wvcc_base,outfile,infile,stem,compiler cflags,mode)
 #    eg: $(wvcc,foo.o,foo.cc,foo,$(CC) $(CFLAGS) -fPIC,-c)
@@ -207,8 +230,22 @@ DEPFILE = $(if $(filter %.o,$1),$(dir $1).$(notdir $(1:.o=.d)),/dev/null)
 define wvcc_base
 	@rm -f "$1"
 	$(COMPILE_MSG)$4 $5 $2 -o $1
+	@# The Perl script here generates the proper dependencies, including
+	@# null dependencies so Make doesn't complain
 	$(DEPEND_MSG)$4 -M -E $< \
-		| sed -e 's|^[^:]*:|$1:|' >$(DEPFILE)
+                | perl -we \
+                '$$a = '"'"'$1'"'"'; \
+                $$\ = $$/; \
+                local $$/; \
+                while (<>) { \
+                    for (split(/(?<!\\)$$/m)) { \
+                        s/^[^:]+:\s*/$$a: /; \
+                        print; \
+                        if (s/^$$a: //) { \
+			    map {print "$$_:" unless m/^\\$$/} (split(/\s+/));\
+                        } \
+                    } \
+                }' >$(DEPFILE)
 endef
 wvcc=$(call wvcc_base,$1,$2,$3,$(CC) $(CFLAGS) $($1-CPPFLAGS) $($1-CFLAGS) $4,$(if $5,$5,-c))
 wvcxx=$(call wvcc_base,$1,$2,$3,$(CXX) $(CFLAGS) $(CXXFLAGS) $($1-CPPFLAGS) $($1-CFLAGS) $($1-CXXFLAGS) $4,$(if $5,$5,-c))
@@ -227,7 +264,7 @@ endef
 wvsoname=$(if $($1-SONAME),$($1-SONAME),$(if $(SONAME),$(SONAME),$1))
 define wvlink_so
 	$(LINK_MSG)$(CC) $(LDFLAGS) $($1-LDFLAGS) -Wl,-soname,$(call wvsoname,$1) -shared -o $1 $(filter %.o %.a %.so,$2) $($1-LIBS) $(LIBS) $(XX_LIBS)
-	$(if $(filter-out $(call wvsoname,$1),$1),ln -sf $1 $(call wvsoname,$1))
+	$(if $(filter-out $(call wvsoname,$1),$1),$(call wvlns,$1,$(call wvsoname,$1)))
 endef
 
 wvlink=$(LINK_MSG)$(CC) $(LDFLAGS) $($1-LDFLAGS) -o $1 $(filter %.o %.a %.so, $2) $($1-LIBS) $(LIBS) $(XX_LIBS) $(LDLIBS)
@@ -340,24 +377,56 @@ subdirs: ${SUBDIRS}
 # Auto-clean rule.  Feel free to append to this in your own directory, by
 # defining your own "clean" rule.
 #
-clean: FORCE _wvclean
+.PHONY: clean _wvclean
 
-_wvclean: FORCE
-	rm -f *~ *.tmp *.o *.a *.so *.so.* *.libs *.moc *.d .*.d .depend .\#* \
-		.tcl_paths pkgIndex.tcl gmon.out core build-stamp wvtestmain
-	rm -f $(patsubst %.t.cc,%.t,$(wildcard *.t.cc) $(wildcard t/*.t.cc)) \
+clean: _wvclean
+
+_wvclean:
+	@echo '--> Cleaning $(shell pwd)...'
+	@rm -f *~ *.tmp *.o *.a *.so *.so.* *.libs *.moc *.d .*.d .depend \
+		 .\#* .tcl_paths pkgIndex.tcl gmon.out core build-stamp \
+		 wvtestmain
+	@rm -f $(patsubst %.t.cc,%.t,$(wildcard *.t.cc) $(wildcard t/*.t.cc)) \
 		t/*.o t/*~ t/.*.d t/.\#*
-	rm -rf debian/tmp
+	@rm -f semantic.cache tags
+	@rm -rf debian/tmp
 
 #
 # default dist rules.
 distclean: clean
 
-dist: distclean ChangeLog
+PKGNAME := $(notdir $(shell pwd))
+PPKGNAME := $(shell echo $(PKGNAME) | tr a-z A-Z)
+PKGVER := $(shell test -f wvver.h \
+	    && cat wvver.h | sed -ne "s/\#define $(PPKGNAME)_VER_STRING.*\"\([^ ]*\)\"/\1/p")
+ifneq ($(PKGVER),)
+PKGDIR := $(PKGNAME)-$(PKGVER)
+else
+PKGDIR := $(PKGNAME)
+endif
+ifneq ($(PKGSNAPSHOT),)
+PKGDIR := $(PKGDIR)+$(shell date +%Y%m%d)
+endif
+dist-dir:
+	@echo $(PKGDIR)
+
+dist-hook:
+
+dist: dist-hook ChangeLog
+	@echo '--> Making dist in ../build/$(PKGDIR)...'
+	@test -d ../build || mkdir ../build
+	@rsync -a --delete --force '$(shell pwd)/' '../build/$(PKGDIR)'
+	@find '../build/$(PKGDIR)' -name CVS -type d -print0 | xargs -0 rm -rf --
+	@find '../build/$(PKGDIR)' -name .cvsignore -type f -print0 | xargs -0 rm -f --
+	@$(MAKE) -C '../build/$(PKGDIR)' distclean
+	@rm -f '../build/$(PKGDIR).tar.gz'
+	@cd ../build; tar -zcf '$(PKGDIR).tar.gz' '$(PKGDIR)'
+	@echo '--> Created tarball in ../build/$(PKGDIR).tar.gz.'
 
 ChangeLog: FORCE
-	rm -f ChangeLog ChangeLog.bak
-	cvs2cl --utc
+	@echo '--> Generating ChangeLog from CVS...'
+	@rm -f ChangeLog ChangeLog.bak
+	@cvs2cl --utc
 
 #
 # Make 'tags' file using the ctags program - useful for editing

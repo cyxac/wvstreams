@@ -41,14 +41,27 @@ WvStreamClone::~WvStreamClone()
 {
     //fprintf(stderr, "%p destroying: clone is %p\n", this, cloned);
     close();
-    RELEASE(cloned);
+    WVRELEASE(cloned);
+}
+
+
+void WvStreamClone::noread()
+{
+#if 0 
+    if (cloned)
+	cloned->noread();
+#endif
+    WvStream::noread();
 }
 
 
 void WvStreamClone::nowrite()
 {
+#if 0 // this clone may have an unflushed buffer, so don't nowrite() now!
     if (cloned)
 	cloned->nowrite();
+#endif
+    WvStream::nowrite();
 }
 
 
@@ -56,7 +69,7 @@ void WvStreamClone::close()
 {
     //fprintf(stderr, "%p closing substream %p\n", this, cloned);
     if (cloned)
-	cloned->setclosecallback(0, 0); // prevent recursion!
+	cloned->setclosecallback(0); // prevent recursion!
     WvStream::close();
     if (disassociate_on_close)
         setclone(NULL);
@@ -126,21 +139,20 @@ WvString WvStreamClone::errstr() const
 }
 
 
-static void close_callback(WvStream &s, void *userdata)
+void WvStreamClone::close_callback(WvStream &s)
 {
-    WvStreamClone *_this = (WvStreamClone *)userdata;
-    if (_this->cloned == &s)
-	_this->close();
+    if (cloned == &s)
+	close();
 }
 
 
 void WvStreamClone::setclone(IWvStream *newclone)
 {
     if (cloned)
-	cloned->setclosecallback(0, 0);
+	cloned->setclosecallback(0);
     cloned = newclone;
     if (cloned)
-	cloned->setclosecallback(close_callback, this);
+	cloned->setclosecallback(IWvStreamCallback(this, &WvStreamClone::close_callback));
 }
 
 
@@ -154,7 +166,9 @@ bool WvStreamClone::pre_select(SelectInfo &si)
 	
 	if (!si.inherit_request)
 	{
-	    si.wants |= force;
+	    si.wants.readable |= readcb;
+	    si.wants.writable |= writecb;
+	    si.wants.isexception |= exceptcb;
 	    // si.wants |= cloned->force; // why would this be necessary?
 	}
 	
@@ -185,7 +199,9 @@ bool WvStreamClone::post_select(SelectInfo &si)
 	oldwant = si.wants;
 	if (!si.inherit_request)
 	{
-	    si.wants |= force;
+	    si.wants.readable |= readcb;
+	    si.wants.writable |= writecb;
+	    si.wants.isexception |= exceptcb;
 	    // si.wants |= cloned->force; // why would this be needed?
 	}
 

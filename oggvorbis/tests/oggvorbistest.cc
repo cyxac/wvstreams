@@ -1,6 +1,6 @@
 /** Tests Ogg Vorbis decoding. */
 #include "wvoggvorbis.h"
-#include "wvstreamlist.h"
+#include "wvistreamlist.h"
 #include "wvencoderstream.h"
 #include "wvfile.h"
 #include "wvpcmutils.h"
@@ -9,12 +9,12 @@
 #include <assert.h>
 #include <time.h>
 
-size_t copy(WvStream *in, WvStream *out, size_t maxbytes = 0)
+size_t mycopy(WvStream *in, WvStream *out, size_t maxbytes = 0)
 {
     size_t total = 0;
     char buf[10240];
 
-    WvStreamList slist;
+    WvIStreamList slist;
     slist.append(in, false);
     slist.append(out, false);
     while (in->isok() && out->isok())
@@ -98,13 +98,13 @@ int main(int argc, char **argv)
 
         case 'i':
             if (in != wvin)
-		RELEASE(in);
+		WVRELEASE(in);
             in = new WvFile(optarg, O_RDONLY);
             break;
         
         case 'o':
             if (out != wvout)
-		RELEASE(out);
+		WVRELEASE(out);
             out = new WvFile(optarg, O_WRONLY | O_TRUNC | O_CREAT);
             break;
 
@@ -245,14 +245,14 @@ int main(int argc, char **argv)
                 wverr->print("\n");
                 break;
             }
-            copy(iencstream, oencstream, 1024);
+            mycopy(iencstream, oencstream, 1024);
         }
     }
 
     /*** Stream rest of file ***/
     wverr->print("Working...");
     
-    copy(iencstream, oencstream);
+    mycopy(iencstream, oencstream);
     oencstream->finish_read();
     oencstream->finish_write();
     oencstream->flush(0);
@@ -295,11 +295,11 @@ int main(int argc, char **argv)
             "geterror()=%s\n",
             oggenc->isok(), oggenc->isfinished(), oggenc->geterror());
 
-    RELEASE(iencstream);
-    RELEASE(oencstream);
+    WVRELEASE(iencstream);
+    WVRELEASE(oencstream);
     if (in != wvin)
-        RELEASE(in);
+        WVRELEASE(in);
     if (out != wvout)
-        RELEASE(out);
+        WVRELEASE(out);
     return 0;
 }

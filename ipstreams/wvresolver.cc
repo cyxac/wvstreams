@@ -40,7 +40,7 @@ public:
         { init(); addr = NULL; }
     ~WvResolverHost()
         {
-	    RELEASE(loop);
+	    WVRELEASE(loop);
             if (pid && pid != -1)
             {
                 kill(pid, SIGKILL);
@@ -230,7 +230,7 @@ int WvResolver::findaddr(int msec_timeout, WvStringParm name,
 	    else
 	    {
 		// the child is dead.  Clean up our stream, too.
-		RELEASE(host->loop);
+		WVRELEASE(host->loop);
 		host->loop = NULL;
 		host->negative = true;
 		return 0; // exited while doing search
@@ -246,7 +246,7 @@ int WvResolver::findaddr(int msec_timeout, WvStringParm name,
     
     do
     {
-	line = host->loop->getline(-1);
+	line = host->loop->blocking_getline(-1);
     } while (!line && host->loop->isok());
     
     if (line && line[0] != 0)
@@ -281,7 +281,7 @@ int WvResolver::findaddr(int msec_timeout, WvStringParm name,
 
     if (host->pid && waitpid(host->pid, NULL, 0) == host->pid)
 	host->pid = 0;
-    RELEASE(host->loop);
+    WVRELEASE(host->loop);
     host->loop = NULL;
     
     // Return as many addresses as we find.

@@ -10,7 +10,7 @@
 #include "wvfile.h"
 #include "strutils.h"
 
-//#define DEBUG_DEL_CALLBACK
+//#define DEBUG_DEL_CALLBACK 1
 #ifdef DEBUG_DEL_CALLBACK
 #include <execinfo.h>
 #endif
@@ -220,6 +220,7 @@ WvConfEmu::WvConfEmu(const UniConf &_uniconf)
     uniconf.add_callback(this,
 			 UniConfCallback(this, &WvConfEmu::notify),
 			 true);
+    dirty = false;
 }
 
 
@@ -229,9 +230,9 @@ WvConfEmu::~WvConfEmu()
     // deleting the WvConfEmu, but they probably won't work the way you
     // think they will. (ie. someone might be using a temporary WvConfEmu
     // and think his callbacks will stick around; they won't!)
+#ifndef DEBUG_DEL_CALLBACK
     assert(callbacks.isempty());
-
-#ifdef DEBUG_DEL_CALLBACK
+#else
     if (!callbacks.isempty())
     {
 	WvList<CallbackInfo>::Iter i(callbacks);
@@ -252,6 +253,12 @@ WvConfEmu::~WvConfEmu()
 void WvConfEmu::zap()
 {
     uniconf.remove();
+}
+
+
+bool WvConfEmu::isclean() const
+{
+    return isok() && !dirty;
 }
 
 
@@ -290,6 +297,7 @@ void WvConfEmu::save()
 void WvConfEmu::flush()
 {
     uniconf.commit();
+    dirty = false;
 }
 
 
@@ -438,7 +446,7 @@ const char *WvConfEmu::fuzzy_get(WvStringList &sect, WvStringParm entry,
 {
     WvStringList::Iter i(sect);
     WvStringTable cache(5);
-    WvConfigSection *s;
+    WvConfigSectionEmu *s;
 
     for (i.rewind(); i.next(); )
     {
@@ -487,6 +495,7 @@ void WvConfEmu::set(WvStringParm section, WvStringParm entry,
             uniconf[section][entry].setme(value);
         else
             uniconf[section][entry].setme(WvString::null);
+        dirty = true;
     }
 }
 
@@ -510,6 +519,7 @@ void WvConfEmu::maybeset(WvStringParm section, WvStringParm entry,
 void WvConfEmu::delete_section(WvStringParm section)
 {
     uniconf[section].remove();
+    dirty = true;
 }
 
 

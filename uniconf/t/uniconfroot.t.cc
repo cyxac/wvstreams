@@ -56,6 +56,69 @@ WVTEST_MAIN("type conversions")
     WVPASSEQ("zz", cfg["blah"]->ifnull("zz"));
 }
 
+WVTEST_MAIN("case")
+{
+    UniConfRoot root("temp:");
+    UniConf cfg(root);
+
+    cfg.xset("eth0/IPAddr", "10");
+    WVPASSEQ("10", cfg.xget("eth0/IPAddr"));
+    WVPASSEQ("10", cfg.xget("eth0/ipaddr"));
+}
+
+WVTEST_MAIN("haschildren() and exists()")
+{
+    UniConfRoot root;
+    {
+    UniConf cfg(root);
+    
+    WVFAIL(cfg["/"].haschildren());
+    WVFAIL(cfg["/"].exists());
+    
+    cfg.mount("temp:");
+    
+    WVFAIL(cfg["/"].haschildren());
+    WVPASS(cfg["/"].exists());
+    }
+   
+    {
+    UniConf cfg(root);
+    
+    WVFAIL(cfg["/bar"].haschildren());
+    WVFAIL(cfg["/bar"].exists());
+    
+    cfg["/bar/config"].mount("temp:");
+    
+    WVFAIL(cfg["/bar/config"].haschildren());
+    WVPASS(cfg["/bar/config"].exists());
+    
+    //once something is mounted, parent keys should exist
+    WVPASS(cfg["/"].haschildren());
+    WVPASS(cfg["/"].exists());
+    WVPASS(cfg["/bar"].haschildren());
+    WVPASS(cfg["/bar"].exists());
+    
+    cfg.mount("temp:");
+    cfg.xset("/config/bar/foo", "goo");
+    WVPASS(cfg["/"].haschildren());
+    WVPASS(cfg["/"].exists());
+    WVFAIL(cfg["/foo"].exists());
+    
+    cfg.xset("/foo", "bar");
+    
+    WVPASS(cfg["/foo"].exists());
+    }
+}
+
+/* Commented out until fullkey is fixed
+WVTEST_MAIN("fullkey()")
+{
+    UniConfRoot root;
+    root.mount("temp:");
+    UniConf cfg(root["bleep"]);
+    cfg["/foo/bar/blah"].setme("mink");
+    WVPASSEQ(cfg["mink"].fullkey(cfg).cstr(), "/foo/bar/blah/mink");
+}*/
 
 static int itcount(const UniConf &cfg)
 {
@@ -109,6 +172,33 @@ WVTEST_MAIN("iterators")
     WVPASSEQ(i->fullkey(sub).printable(), "b");
     i.next();
     WVPASSEQ(i->fullkey(sub).printable(), "b/1");
+
+}
+
+// bug 6869
+static int compare(const UniConf &_a, const UniConf &_b)
+{
+    return strcmp(_a.key().cstr(), _b.key().cstr());
+}
+WVTEST_MAIN("sorted iterators")
+{
+    UniConfRoot root("temp:");
+    root["3"].setme("foo1");
+    root["2"].setme("foo2");
+    root["1"].setme("foo3");
+    root["4"].setme("foo4");
+
+    UniConf sub(root);
+    UniConf::SortedIter i(sub, &compare);
+    i.rewind();
+    i.next();
+    WVPASSEQ(i->fullkey(sub).printable(), "1");
+    i.next();
+    WVPASSEQ(i->fullkey(sub).printable(), "2");
+    i.next();
+    WVPASSEQ(i->fullkey(sub).printable(), "3");
+    i.next();
+    WVPASSEQ(i->fullkey(sub).printable(), "4");
 }
 
 WVTEST_MAIN("nested iterators")
@@ -132,6 +222,7 @@ WVTEST_MAIN("nested iterators")
     WVPASS(cfg["foo"].getmeint());
     WVPASS(cfg["/foo/bar"].getmeint());
 }
+
 
 WVTEST_MAIN("mounting with paths prefixed by /")
 {
@@ -159,4 +250,27 @@ WVTEST_MAIN("mounting with paths prefixed by /")
     for (iter2.rewind(); iter2.next(); i++)
         WVPASS(iter2->getmeint());
 
+}
+
+WVTEST_MAIN("Deleting while iterating")
+{
+    UniConfRoot root("temp:");
+    char *foo = new char[250]; //to make sure the hash moves in memory
+    for (int i = 0; i < 10; i++)
+    {
+        root.xsetint(i, i);
+        root[i].xsetint(i, i);
+    }
+    
+    UniConf::Iter i(root);
+    char *foo2 = new char[250];
+    for (i.rewind(); i.next(); )
+    {
+//        fprintf(stderr, "%s\n", i->getme().cstr());
+        root[i->key()].setme(WvString::null);
+        if (i->getme() != WvString::null)
+            i.rewind();
+    }
+    deletev foo;
+    deletev foo2;
 }

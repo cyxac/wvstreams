@@ -46,7 +46,27 @@ UUID_MAP_BEGIN(WvStream)
   UUID_MAP_ENTRY(IWvStream)
   UUID_MAP_END
 
-WvStream::WvStream()
+
+WvStream::WvStream():
+    read_requires_writable(NULL),
+    write_requires_readable(NULL),
+    uses_continue_select(false),
+    personal_stack_size(65536),
+    alarm_was_ticking(false),
+    stop_read(false),
+    stop_write(false),
+    closed(false),
+    userdata(NULL),
+    readcb(this, &WvStream::legacy_callback),
+    max_outbuf_size(0),
+    outbuf_delayed_flush(false),
+    is_auto_flush(true),
+    want_to_flush(true),
+    is_flushing(false),
+    queue_min(0),
+    autoclose_time(0),
+    alarm_time(wvtime_zero),
+    last_alarm_check(wvtime_zero)
 {
     TRACE("Creating wvstream %p\n", this);
     
@@ -55,26 +75,6 @@ WvStream::WvStream()
     int result = WSAStartup(MAKEWORD(2,0), &wsaData); 
     assert(result == 0);
 #endif
-    wvstream_execute_called = false;
-    userdata = closecb_data = NULL;
-    max_outbuf_size = 0;
-    outbuf_delayed_flush = false;
-    want_to_flush = true;
-    is_flushing = false;
-    is_auto_flush = true;
-    alarm_was_ticking = false;
-    force.readable = true;
-    force.writable = force.isexception = false;
-    read_requires_writable = write_requires_readable = NULL;
-    stop_read = stop_write = closed = false;
-    queue_min = 0;
-    autoclose_time = 0;
-    alarm_time = wvtime_zero;
-    last_alarm_check = wvtime_zero;
-    
-    // magic multitasking support
-    uses_continue_select = false;
-    personal_stack_size = 65536;
 }
 
 
@@ -107,11 +107,11 @@ WvStream::~WvStream()
 void WvStream::close()
 {
     flush(2000); // fixme: should not hardcode this stuff
-    if (!! closecb_func)
+    if (!! closecb)
     {
-        WvStreamCallback cb = closecb_func;
-        closecb_func = 0; // ensure callback is only called once
-        cb(*this, closecb_data);
+        IWvStreamCallback cb = closecb;
+        closecb = 0; // ensure callback is only called once
+        cb(*this);
     }
     
     closed = true;
@@ -149,17 +149,9 @@ void WvStream::autoforward_callback(WvStream &s, void *userdata)
 
 void WvStream::_callback()
 {
-    wvstream_execute_called = false;
     execute();
     if (!! callfunc)
 	callfunc(*this, userdata);
-
-    // if this assertion fails, a derived class's virtual execute() function
-    // didn't call its parent's execute() function, and we didn't make it
-    // all the way back up to WvStream::execute().  This doesn't always
-    // matter right now, but it could lead to obscure bugs later, so we'll
-    // enforce it.
-    assert(wvstream_execute_called);
 }
 
 
@@ -206,13 +198,12 @@ void WvStream::callback()
     }
     else
 	_callback();
-}
 
-
-void WvStream::execute()
-{
-    // do nothing by default, but notice that we were here.
-    wvstream_execute_called = true;
+    // if this assertion fails, a derived class's virtual execute() function
+    // didn't call its parent's execute() function, and we didn't make it
+    // all the way back up to WvStream::execute().  This doesn't always
+    // matter right now, but it could lead to obscure bugs later, so we'll
+    // enforce it.
 }
 
 
@@ -244,22 +235,6 @@ size_t WvStream::read(WvBuf &outbuf, size_t count)
     size_t len = read(buf, count);
     tmp.unalloc(count - len);
     outbuf.merge(tmp);
-    return len;
-}
-
-
-size_t WvStream::continue_read(time_t wait_msec, WvBuf &outbuf, size_t count)
-{
-    // for now, just wrap the older read function
-    size_t free = outbuf.free();
-    if (count > free)
-        count = free;
-    unsigned char *buf = outbuf.alloc(count);
-    
-    // call the non-WvBuf continue_read
-    size_t len = continue_read(wait_msec, buf, count);
-    
-    outbuf.unalloc(count - len);
     return len;
 }
 
@@ -316,43 +291,6 @@ size_t WvStream::read(void *buf, size_t count)
 }
 
 
-size_t WvStream::continue_read(time_t wait_msec, void *buf, size_t count)
-{
-    assert(uses_continue_select);
-
-    if (!count)
-        return 0;
-
-    // FIXME: continue_select also uses the alarm, so this doesn't work.
-    if (wait_msec >= 0)
-        alarm(wait_msec);
-
-    queuemin(count);
-
-    int got = 0;
-
-    while (isok())
-    {
-	WvStream::execute();
-        if (continue_select(-1))
-        {
-	    if ((got = read(buf, count)) != 0)
-		break;
-	    if (alarm_was_ticking) 
-		break;
-        }
-    }
-
-    if (wait_msec >= 0)
-        alarm(-1);
-
-    queuemin(0);
-    
-    WvStream::execute();
-    return got;
-}
-
-
 size_t WvStream::write(const void *buf, size_t count)
 {
     if (!isok() || !buf || !count || stop_write) return 0;
@@ -363,7 +301,7 @@ size_t WvStream::write(const void *buf, size_t count)
 	wrote = uwrite(buf, count);
         count -= wrote;
         buf = (const unsigned char *)buf + wrote;
-	if (!count) return wrote; // short circuit if no buffering needed
+	// if (!count) return wrote; // short circuit if no buffering needed
     }
     if (max_outbuf_size != 0)
     {
@@ -422,81 +360,11 @@ bool WvStream::iswritable()
 }
 
 
-size_t WvStream::read_until(void *buf, size_t count, time_t wait_msec, char separator)
+char *WvStream::blocking_getline(time_t wait_msec, char separator,
+				 int readahead)
 {
-    if (count == 0)
-        return 0;
+    //assert(uses_continue_select || wait_msec == 0);
 
-    size_t result;
-
-    struct timeval timeout_time;
-    if (wait_msec > 0)
-        timeout_time = msecadd(wvtime(), wait_msec);
-
-    // if we get here, we either want to wait a bit or there is data
-    // available.
-    while (isok())
-    {
-        // if there is a newline already, return its string.
-        result = min(count, inbuf.strchr(separator));
-        if (result > 0)
-        {
-            inbuf.move(buf, result);
-            queuemin(0);
-            return result;
-        }
-
-        size_t needed = inbuf.used() + 1;
-        // make select not return true until more data is available
-        queuemin(needed);
-
-        // compute remaining timeout
-        if (wait_msec > 0)
-        {
-            wait_msec = msecdiff(timeout_time, wvtime());
-            if (wait_msec < 0)
-                wait_msec = 0;
-        }
-        
-        bool hasdata;
-        if (uses_continue_select)
-            hasdata = continue_select(wait_msec);
-        else
-            hasdata = select(wait_msec, true, false);
-        if (!isok())
-            break;
-
-        if (hasdata)
-        {
-            // Why doesn't this work?  It blows the heap...
-            //
-            //size_t bytesToGet = max(inbuf.optallocable(), 1U);
-            //inbuf.unalloc(bytesToGet - uread(inbuf.alloc(bytesToGet), bytesToGet));
-
-            // Workaround:
-            //
-            // note that buf is unused until we have the entire line, so
-            // we can use it for temporary storage
-            size_t numread = uread(buf, count);
-            inbuf.put(buf, numread);
-
-            hasdata = inbuf.used() >= needed; // enough?
-        }
-
-        if (!hasdata && wait_msec == 0)
-            break; // handle timeout
-    }
-    queuemin(0);
-    
-    // we timed out or had a socket error
-    return 0;
-}
-
-
-char *WvStream::getline(time_t wait_msec, char separator, int readahead)
-{
-    // FIXME: this should probably use read_until now that it exists
-    
     struct timeval timeout_time;
     if (wait_msec > 0)
         timeout_time = msecadd(wvtime(), wait_msec);
@@ -509,33 +377,14 @@ char *WvStream::getline(time_t wait_msec, char separator, int readahead)
     {
         queuemin(0);
     
-        // if there is a newline already, return its string.
-        size_t i = inbuf.strchr(separator);
-        if (i > 0)
-        {
-	    char *eol = (char *)inbuf.mutablepeek(i - 1, 1);
-	    assert(eol);
-	    *eol = 0;
-            return (char *)inbuf.get(i);
-        }
-        else if (!isok() || stop_read)    // uh oh, stream is in trouble.
-        {
-            if (inbuf.used())
-            {
-                // handle "EOF without newline" condition
-		// FIXME: it's very silly that buffers can't return editable
-		// char* arrays.
-                inbuf.alloc(1)[0] = 0; // null-terminate it
-                return const_cast<char *>(
-                    (const char *)inbuf.get(inbuf.used()));
-            }
-            else
-                break; // nothing else to do!
-        }
+        // if there is a newline already, we have enough data.
+        if (inbuf.strchr(separator) > 0)
+	    break;
+	else if (!isok() || stop_read)    // uh oh, stream is in trouble.
+	    break;
 
         // make select not return true until more data is available
-        size_t needed = inbuf.used() + 1;
-        queuemin(needed);
+        queuemin(inbuf.used() + 1);
 
         // compute remaining timeout
         if (wait_msec > 0)
@@ -546,11 +395,12 @@ char *WvStream::getline(time_t wait_msec, char separator, int readahead)
         }
         
         bool hasdata;
-        if (uses_continue_select)
+        if (wait_msec != 0 && uses_continue_select)
             hasdata = continue_select(wait_msec);
         else
             hasdata = select(wait_msec, true, false);
-        if (!isok())
+        
+	if (!isok())
             break;
 
         if (hasdata)
@@ -559,22 +409,42 @@ char *WvStream::getline(time_t wait_msec, char separator, int readahead)
             unsigned char *buf = inbuf.alloc(readahead);
             size_t len = uread(buf, readahead);
             inbuf.unalloc(readahead - len);
-            hasdata = inbuf.used() >= needed; // enough?
+            hasdata = len > 0; // enough?
         }
 
+	if (!isok())
+	    break;
+	
         if (!hasdata && wait_msec == 0)
-            break; // handle timeout
+	    return NULL; // handle timeout
     }
-    
-    // we timed out or had a socket error
-    if (!isok() && inbuf.used())
-    {
-	// if the stream has closed, dump the entire buffer as the last line
-	inbuf.put("", 1);
-	return (char *)inbuf.get(inbuf.used());
-    }
-    else
+    if (!inbuf.used())
 	return NULL;
+
+    // return the appropriate data
+    size_t i = 0;
+    i = inbuf.strchr(separator);
+    if (i > 0) {
+	char *eol = (char *)inbuf.mutablepeek(i - 1, 1);
+	assert(eol);
+	*eol = 0;
+	return const_cast<char*>((const char *)inbuf.get(i));
+    } else {
+	// handle "EOF without newline" condition
+	// FIXME: it's very silly that buffers can't return editable
+	// char* arrays.
+	inbuf.alloc(1)[0] = 0; // null-terminate it
+	return const_cast<char *>((const char *)inbuf.get(inbuf.used()));
+    }
+}
+
+
+char *WvStream::continue_getline(time_t wait_msec, char separator,
+				 int readahead)
+{
+    assert(false && "not implemented, come back later!");
+    assert(uses_continue_select);
+    return NULL;
 }
 
 
@@ -729,7 +599,11 @@ bool WvStream::pre_select(SelectInfo &si)
 	return true; // alarm has rung
 
     if (!si.inherit_request)
-	si.wants |= force;
+    {
+	si.wants.readable |= readcb;
+	si.wants.writable |= writecb;
+	si.wants.isexception |= exceptcb;
+    }
     
     // handle read-ahead buffering
     if (si.wants.readable && inbuf.used() && inbuf.used() >= queue_min)
@@ -762,7 +636,11 @@ bool WvStream::_build_selectinfo(SelectInfo &si, time_t msec_timeout,
     FD_ZERO(&si.except);
     
     if (forceable)
-	si.wants = force;
+    {
+	si.wants.readable = readcb;
+	si.wants.writable = writecb;
+	si.wants.isexception = exceptcb;
+    }
     else
     {
 	si.wants.readable = readable;
@@ -868,17 +746,23 @@ bool WvStream::_select(time_t msec_timeout,
 
 void WvStream::force_select(bool readable, bool writable, bool isexception)
 {
-    force.readable |= readable;
-    force.writable |= writable;
-    force.isexception |= isexception;
+    if (readable)
+	readcb = IWvStreamCallback(this, &WvStream::legacy_callback);
+    if (writable)
+	writecb = IWvStreamCallback(this, &WvStream::legacy_callback);
+    if (isexception)
+	exceptcb = IWvStreamCallback(this, &WvStream::legacy_callback);
 }
 
 
 void WvStream::undo_force_select(bool readable, bool writable, bool isexception)
 {
-    force.readable &= !readable;
-    force.writable &= !writable;
-    force.isexception &= !isexception;
+    if (readable)
+	readcb = 0;
+    if (writable)
+	writecb = 0;
+    if (isexception)
+	exceptcb = 0;
 }
 
 
@@ -935,6 +819,7 @@ bool WvStream::continue_select(time_t msec_timeout)
 
     alarm(msec_timeout);
     WvCont::yield();
+    alarm(-1); // cancel the still-pending alarm, or it might go off later!
     
     // when we get here, someone has jumped back into our task.
     // We have to select(0) here because it's possible that the alarm was 
@@ -943,8 +828,7 @@ bool WvStream::continue_select(time_t msec_timeout)
     // inefficient, because if the alarm was expired then pre_select()
     // returned true anyway and short-circuited the previous select().
     TRACE("hello-%p\n", this);
-    return !alarm_was_ticking || select(0, force.readable, force.writable,
-					force.isexception);
+    return !alarm_was_ticking || select(0, readcb, writecb, exceptcb);
 }
 
 
@@ -969,10 +853,51 @@ void WvStream::setcallback(WvStreamCallback _callfunc, void *_userdata)
 }
 
 
-void WvStream::setclosecallback(WvStreamCallback _callfunc, void *_userdata)
+void WvStream::legacy_callback(IWvStream& s)
 {
-    closecb_func = _callfunc;
-    closecb_data = _userdata;
+    execute();
+    if (!! callfunc)
+	callfunc(*this, userdata);
+}
+
+
+IWvStreamCallback WvStream::setreadcallback(IWvStreamCallback _callback)
+{
+    IWvStreamCallback tmp = readcb;
+
+    readcb = _callback;
+
+    return tmp;
+}
+
+
+IWvStreamCallback WvStream::setwritecallback(IWvStreamCallback _callback)
+{
+    IWvStreamCallback tmp = writecb;
+
+    writecb = _callback;
+
+    return tmp;
+}
+
+
+IWvStreamCallback WvStream::setexceptcallback(IWvStreamCallback _callback)
+{
+    IWvStreamCallback tmp = exceptcb;
+
+    exceptcb = _callback;
+
+    return tmp;
+}
+
+
+IWvStreamCallback WvStream::setclosecallback(IWvStreamCallback _callback)
+{
+    IWvStreamCallback tmp = closecb;
+
+    closecb = _callback;
+
+    return tmp;
 }
 
 

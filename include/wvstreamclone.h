@@ -54,7 +54,11 @@ public:
     virtual bool post_select(SelectInfo &si);
     virtual const WvAddr *src() const;
     virtual void execute();
+    virtual void noread();
     virtual void nowrite();
+
+private:
+    void close_callback(WvStream &s);
 };
 
 #endif // __WVSTREAMCLONE_H

@@ -7,7 +7,7 @@
  * commands.
  */
 #include "wvmodem.h"
-#include "wvstreamlist.h"
+#include "wvistreamlist.h"
 #include "wvlog.h"
 #include "strutils.h"
 
@@ -26,7 +26,7 @@ int main(int argc, char **argv)
     size_t len;
     bool last_carrier = false, carrier;
     
-    WvStreamList l;
+    WvIStreamList l;
     l.append(wvcon, false);
     l.append(&modem, false);
     
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     }
     
     if (!modem.isok() && modem.geterr())
-	log(WvLog::Error, "modem device: %s\n", modem.errstr());
+	log(WvLog::Error, "Modem device: %s\n", modem.errstr());
     
     return 0;
 }

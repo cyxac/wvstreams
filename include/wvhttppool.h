@@ -12,13 +12,14 @@
 
 #include "ftpparse.h"
 #include "wvurl.h"
-#include "wvstreamlist.h"
+#include "wvistreamlist.h"
 #include "wvstreamclone.h"
 #include "wvlog.h"
 #include "wvhashtable.h"
 #include "wvhttp.h"
 #include "wvbufstream.h"
 #include "wvbuf.h"
+#include "wvcont.h"
 
 class WvBufUrlStream;
 class WvUrlStream;
@@ -124,6 +125,7 @@ public:
 
     virtual ~WvUrlStream() {};
 
+    void log_urls();
     virtual void close() = 0;
     void addurl(WvUrlRequest *url);
     void delurl(WvUrlRequest *url);
@@ -155,7 +157,7 @@ private:
     
     enum { Unknown, Chunked, ContentLength, Infinity } encoding;
     size_t bytes_remaining;
-    bool in_chunk_trailer, last_was_pipeline_test;
+    bool in_chunk_trailer, last_was_pipeline_test, in_doneurl;
 
     virtual void doneurl();
     virtual void request_next();
@@ -199,10 +201,12 @@ class WvFtpStream : public WvUrlStream
 
     WvString parse_for_links(char *line);
 
+    WvCont cont;
+    void* real_execute(void*);
+
 public:
     WvFtpStream(const WvIPPortAddr &_remaddr, WvStringParm _username,
 		WvStringParm _password);
-    virtual ~WvFtpStream();
 
     virtual bool pre_select(SelectInfo &si);
     virtual bool post_select(SelectInfo &si);
@@ -212,7 +216,7 @@ public:
 
 
 // FIXME: Rename this to WvUrlPool someday.
-class WvHttpPool : public WvStreamList
+class WvHttpPool : public WvIStreamList
 {
     WvLog log;
     WvResolver dns;

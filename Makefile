@@ -1,4 +1,5 @@
 WVSTREAMS=.
+WVSTREAMS_SRC= # Clear WVSTREAMS_SRC so wvrules.mk uses its WVSTREAMS_foo
 include wvrules.mk
 override enable_efence=no
 
@@ -6,22 +7,26 @@ XPATH=include
 
 include vars.mk
 
+all: config.mk xplc $(TARGETS)
+
+.PHONY: xplc xplc/clean install-xplc
+xplc:
+xplc/clean:
+install-xplc:
+
 ifeq ("$(build_xplc)", "yes")
-  MYXPLC:=xplc
-endif
 
-all: config.mk $(MYXPLC) $(TARGETS)
-
-ifeq ("$(build_xplc)", "yes")
-
-.PHONY: xplc
 xplc:
 	$(MAKE) -C xplc
 
-# Prevent complaints that Make can't find these two linker options.
--lxplc-cxx: ;
+xplc/clean:
+	$(MAKE) -C xplc clean
 
--lxplc: ;
+install-xplc: xplc
+	$(INSTALL) -d $(DESTDIR)$(includedir)/wvstreams/xplc
+	$(INSTALL_DATA) $(wildcard xplc/include/xplc/*.h) $(DESTDIR)$(includedir)/wvstreams/xplc
+	$(INSTALL) -d $(DESTDIR)$(libdir)
+	$(INSTALL_DATA) xplc/libxplc-cxx.a $(DESTDIR)$(libdir)
 
 endif
 
@@ -32,19 +37,29 @@ endif
 # FIXME: little trick to ensure that the wvautoconf.h.in file is there
 .PHONY: dist-hack-clean
 dist-hack-clean:
-	rm -f stamp-h.in
+	@rm -f stamp-h.in
 
-dist: dist-hack-clean configure distclean
-	rm -rf autom4te.cache
-	if test -d .xplc; then \
+dist-hook: dist-hack-clean configure
+	@rm -rf autom4te.cache
+	@if test -d .xplc; then \
+	    echo '--> Preparing XPLC for dist...' \
 	    $(MAKE) -C .xplc clean patch; \
 	    cp -Lpr .xplc/build/xplc .; \
 	fi
 
 runconfigure: config.mk include/wvautoconf.h
 
-config.mk: configure config.mk.in include/wvautoconf.h.in
-	$(error Please run the "configure" script)
+ifndef CONFIGURING
+configure=$(error Please run the "configure" script)
+else
+configure:=
+endif
+
+config.mk: configure config.mk.in
+	$(call configure)
+
+include/wvautoconf.h: include/wvautoconf.h.in
+	$(call configure)
 
 # FIXME: there is some confusion here
 ifdef WE_ARE_DIST
@@ -62,10 +77,17 @@ include/wvautoconf.h.in:
 	autoheader
 endif
 
+ifeq ($(VERBOSE),)
+define wild_clean
+	@list=`echo $(wildcard $(1))`; \
+		test -z "$${list}" || sh -c "rm -rf $${list}"
+endef
+else
 define wild_clean
 	@list=`echo $(wildcard $(1))`; \
 		test -z "$${list}" || sh -cx "rm -rf $${list}"
 endef
+endif
 
 realclean: distclean
 	$(call wild_clean,$(REALCLEAN))
@@ -73,8 +95,10 @@ realclean: distclean
 
 distclean: clean
 	$(call wild_clean,$(DISTCLEAN))
+	@rm -f pkgconfig/*.pc
+	@rm -f .xplc
 
-clean: depend dust
+clean: depend dust xplc/clean
 	$(call wild_clean,$(TARGETS) uniconf/daemon/uniconfd \
 		$(GARBAGE) $(TESTS) tmp.ini \
 		$(shell find . -name '*.o' -o -name '*.moc'))
@@ -91,8 +115,7 @@ kdoc:
 doxygen:
 	doxygen
 
-install: install-shared install-dev install-xplc
-#FIXME: We need to install uniconfd somewhere.
+install: install-shared install-dev install-xplc install-uniconfd
 
 install-shared: $(TARGETS_SO)
 	$(INSTALL) -d $(DESTDIR)$(libdir)
@@ -107,20 +130,28 @@ install-dev: $(TARGETS_SO) $(TARGETS_A)
 	for i in $(TARGETS_A); do \
 	    $(INSTALL_DATA) $$i $(DESTDIR)$(libdir); \
 	done
-	for i in $(TARGETS_SO); do \
-	    cd $(DESTDIR)$(libdir) && $(LN_S) $$i.$(RELEASE) $$i; \
+	cd $(DESTDIR)$(libdir) && for i in $(TARGETS_SO); do \
+	    rm -f $$i; \
+	    $(LN_S) $$i.$(RELEASE) $$i; \
 	done
+	$(INSTALL) -d $(DESTDIR)$(libdir)/pkgconfig
+	$(INSTALL_DATA) $(wildcard pkgconfig/*.pc) $(DESTDIR)$(libdir)/pkgconfig
 
-ifeq ("$(build_xplc)", "yes")
+uniconfd: uniconf/daemon/uniconfd uniconf/daemon/uniconfd.ini \
+          uniconf/daemon/uniconfd.8
 
-install-xplc: xplc
-	$(MAKE) -C xplc install
-
-else
-
-install-xplc: ;
-
-endif
+install-uniconfd: uniconfd uniconf/tests/uni uniconf/tests/uni.8
+	$(INSTALL) -d $(DESTDIR)$(bindir)
+	$(INSTALL_PROGRAM) uniconf/tests/uni $(DESTDIR)$(bindir)/
+	$(INSTALL) -d $(DESTDIR)$(sbindir)
+	$(INSTALL_PROGRAM) uniconf/daemon/uniconfd $(DESTDIR)$(sbindir)/
+	$(INSTALL) -d $(DESTDIR)$(sysconfdir)
+	$(INSTALL_DATA) uniconf/daemon/uniconf.conf $(DESTDIR)$(sysconfdir)/
+	$(INSTALL) -d $(DESTDIR)$(localstatedir)/lib/uniconf
+	touch $(DESTDIR)$(localstatedir)/lib/uniconf/uniconfd.ini
+	$(INSTALL) -d $(DESTDIR)$(mandir)/man8
+	$(INSTALL_DATA) uniconf/daemon/uniconfd.8 $(DESTDIR)$(mandir)/man8
+	$(INSTALL_DATA) uniconf/tests/uni.8 $(DESTDIR)$(mandir)/man8
 
 uninstall:
 	$(tbd)
@@ -134,11 +165,14 @@ include $(filter-out xplc%,$(wildcard */rules.mk */*/rules.mk)) /dev/null
 -include $(shell find . -name '.*.d') /dev/null
 
 test: runconfigure all tests wvtestmain
-	$(WVTESTRUN) $(MAKE) runtests
+	LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$(WVSTREAMS_LIB)" $(WVTESTRUN) $(MAKE) runtests
 
 runtests:
 	$(VALGRIND) ./wvtestmain $(TESTNAME)
-	cd uniconf/tests && ./unitest.sh
+ifeq ("$(TESTNAME)", "unitest")
+	cd uniconf/tests && DAEMON=0 ./unitest.sh
+	cd uniconf/tests && DAEMON=1 ./unitest.sh
+endif
 
 wvtestmain: wvtestmain.o \
 	$(call objects, $(shell find . -type d -name t)) \

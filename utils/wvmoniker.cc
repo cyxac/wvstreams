@@ -6,6 +6,7 @@
  * factory to get objects supporting a particular interface.  See wvmoniker.h.
  */
 #include "wvmonikerregistry.h"
+#include "strutils.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -33,7 +34,7 @@ static unsigned WvHash(const UUID &_uuid)
 }
 
 
-DeclareWvDict(WvMonikerRegistry, UUID, reg_iid);
+DeclareWvScatterDict(WvMonikerRegistry, UUID, reg_iid);
 static WvMonikerRegistryDict *regs;
   
 
@@ -71,7 +72,9 @@ void WvMonikerRegistry::del(WvStringParm id)
 void *WvMonikerRegistry::create(WvStringParm _s,
 				IObject *obj, void *userdata)
 {
-    WvString s(_s);
+    WvString t(_s);
+    WvString s(trim_string(t.edit()));
+
     char *cptr = strchr(s.edit(), ':');
     if (cptr)
 	*cptr++ = 0;
@@ -177,19 +180,20 @@ WvMonikerBase::~WvMonikerBase()
     if (reg)
     {
 	reg->del(id);
-	RELEASE(reg);
+	WVRELEASE(reg);
     }
 }
 
 
 void *wvcreate(const UUID &iid,
-	       WvStringParm s, IObject *obj, void *userdata)
+	       WvStringParm moniker, IObject *obj, void *userdata)
 {
+    assert(!moniker.isnull());
     WvMonikerRegistry *reg = WvMonikerRegistry::find_reg(iid);
     if (reg)
     {
-	void *ret = reg->create(s, obj, userdata);
-	RELEASE(reg);
+	void *ret = reg->create(moniker, obj, userdata);
+	WVRELEASE(reg);
 	return ret;
     }
     else
