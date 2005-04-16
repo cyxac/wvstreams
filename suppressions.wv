@@ -22,24 +22,6 @@
    obj:/lib/ld-2.3.*.so
 }
 {
-   <insert a suppression name here>
-   Memcheck:Cond
-   obj:/usr/lib/libcrypto.so.0.9.6
-}
-{
-   <insert a suppression name here>
-   Memcheck:Value4
-   obj:/usr/lib/libcrypto.so.0.9.6
-}
-{
-   <insert a suppression name here>
-   Memcheck:Cond
-   fun:__udivmoddi4
-   fun:__umoddi3@GLIBC_2.0
-   fun:BN_mod_word
-   obj:/usr/lib/libcrypto.so.0.9.6
-}
-{
    stupid_ecard_stuff
    Memcheck:Leak
    fun:malloc
@@ -79,6 +61,13 @@
     fun:_IOvfprintf
 }
 {
+   stupid_zlib_stuff
+   Memcheck:Cond
+   obj:/usr/lib/libz.so*
+   obj:/usr/lib/libz.so*
+   fun:deflate
+}
+{
    sigaction_bites_my_nuts
    Memcheck:Param
    sigaction(act)
@@ -88,4 +77,17 @@
    more_fun_libcrypto_junk
    Memcheck:Value4
    fun:BF_encrypt
+}
+{
+   more_fun_libcrypto_junk_2
+   Memcheck:Value4
+   fun:AES_encrypt
+}
+{
+   WvInterface has a static WvInterfaceDict
+   Memcheck:Leak
+   fun:__builtin_vec_new
+   fun:__t11WvHashTable4Z11WvInterfaceZ8WvStringZt27WvInterfaceDictBaseAccessor2Z11WvInterfaceZ8WvStringz1Z8OpEqCompUi
+   fun:__static_initialization_and_destruction_0
+   fun:_GLOBAL_.I._15WvInterfaceDict.links
 }
