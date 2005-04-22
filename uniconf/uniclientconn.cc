@@ -44,14 +44,12 @@ UniClientConn::UniClientConn(IWvStream *_s, WvStringParm dst) :
     log(WvString("UniConf to %s", dst.isnull() && _s->src() ? *_s->src() : WvString(dst)),
     WvLog::Debug5), closed(false), payloadbuf("")
 {
-    WvIStreamList::globallist.append(this, false);
     log("Opened\n");
 }
 
 
 UniClientConn::~UniClientConn()
 {
-    WvIStreamList::globallist.unlink(this);
     close();
 }
 
@@ -74,7 +72,7 @@ WvString UniClientConn::readmsg()
     {
 	// use lots of readahead to prevent unnecessary runs through select()
 	// during heavy data transfers.
-        char *line = getline('\n', 20480);
+        char *line = getline(0, '\n', 20480);
         if (line)
         {
             msgbuf.putstr(line);
