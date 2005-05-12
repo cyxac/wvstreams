@@ -121,6 +121,7 @@ depend:
 
 dust:
 	$(call wild_clean,$(shell find . -name 'core' -o -name '*~' -o -name '.#*') $(wildcard *.d))
+	$(call wild_clean,$(wildcard valgrind.log.pid*))
 
 kdoc:
 	kdoc -f html -d Docs/kdoc-html --name wvstreams --strip-h-path */*.h
@@ -178,7 +179,7 @@ include $(filter-out xplc%,$(wildcard */rules.mk */*/rules.mk)) /dev/null
 -include $(shell find . -name '.*.d') /dev/null
 
 test: runconfigure all tests wvtestmain
-	LD_LIBRARY_PATH="$(WVSTREAMS_LIB):$$LD_LIBRARY_PATH" $(WVTESTRUN) $(MAKE) runtests
+	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH):$(WVSTREAMS_LIB)" $(WVTESTRUN) $(MAKE) runtests
 
 runtests:
 	$(VALGRIND) ./wvtestmain '$(TESTNAME)'
