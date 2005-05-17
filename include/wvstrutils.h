@@ -50,12 +50,17 @@ char *trim_string(char *string, char c);
  * return the string formed by concatenating string 'a' and string 'b' with
  * the 'sep' character between them.  For example,
  *     spacecat("xx", "yy", ";");
+ * returns "xx;yy", and
+ *    spacecat("xx;;", "yy", ";")
+ * returns "xx;;;yy", and
+ *    spacecat("xx;;", "yy", ";", true)
  * returns "xx;yy".
- * 
+ *
  * This function is much faster than the more obvious WvString("%s;%s", a, b),
  * so it's useful when you're producing a *lot* of string data.
  */
-WvString spacecat(WvStringParm a, WvStringParm b, char sep = ' ');
+WvString spacecat(WvStringParm a, WvStringParm b, char sep = ' ',
+		  bool onesep = false);
 
     
 /**
@@ -146,9 +151,17 @@ WvString local_date(time_t _when = -1);
 
 /**
  * Similar to crypt(), but this randomly selects its own salt.
- * This function is defined in strcrypt.cc.
+ * This function is defined in strcrypt.cc.  It chooses to use the DES
+ * engine.
  */
 WvString passwd_crypt(const char *str);
+
+/**
+ * Similar to crypt(), but this randomly selects its own salt.
+ * This function is defined in strcrypt.cc.  It chooses to use the MD5
+ * engine.
+ */
+WvString passwd_md5(const char *str);
 
 /**
  * Returns a string with a backslash in front of every non alphanumeric
@@ -181,14 +194,32 @@ WvString nice_hostname(WvStringParm name);
 WvString getfilename(WvStringParm fullname);
 WvString getdirname(WvStringParm fullname);
 
+/*
+ * Possible rounding methods for numbers -- remember from school?
+ */
+enum RoundingMethod
+{
+    ROUND_DOWN,
+    ROUND_DOWN_AT_POINT_FIVE,
+    ROUND_UP_AT_POINT_FIVE,
+    ROUND_UP
+};
+    
 /**
  * Given a number of blocks and a blocksize (default==1 byte), return a 
  * WvString containing a human-readable representation of blocks*blocksize.
  */
-WvString sizetoa(unsigned long long blocks, unsigned int blocksize=1);
+WvString sizetoa(unsigned long long blocks, unsigned int blocksize=1,
+        RoundingMethod rouding_method = ROUND_UP_AT_POINT_FIVE);
 
 /** Give a size in Kilobyes gives a human readable size */
-WvString sizektoa(unsigned int kbytes);
+WvString sizektoa(unsigned int kbytes,
+        RoundingMethod rouding_method = ROUND_UP_AT_POINT_FIVE);
+
+/** Given a number of seconds, returns a formatted human-readable string
+ * saying how long the period is.
+ */
+WvString secondstoa(unsigned int total_seconds);
 
 /**
  * Finds a string in an array and returns its index.
@@ -375,6 +406,12 @@ WvString beforestr(WvStringParm line, WvStringParm a);
  * if pos+len > line.len() simply return from pos to end of line
  */
 WvString substr(WvString line, unsigned int pos, unsigned int len);
+
+/** 
+ * Removes any trailing punctuation ('.', '?', or '!') from the line, and
+ * returns it in a new string.  Does not modify line.
+ */
+WvString depunctuate(WvStringParm line);
 
 // Converts a string in decimal to an arbitrary numeric type
 template<class T>

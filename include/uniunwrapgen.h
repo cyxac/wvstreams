@@ -47,6 +47,7 @@ public:
     /***** Overridden methods *****/
     virtual void commit();
     virtual bool refresh();
+    virtual void flush_buffers() { }
     virtual void prefetch(const UniConfKey &key, bool recursive);
     virtual WvString get(const UniConfKey &key);
     virtual void set(const UniConfKey &key, WvStringParm value);
@@ -62,6 +63,9 @@ private:
      * The default implementation calls delta(key).
      */
     virtual void gencallback(const UniConf &cfg, const UniConfKey &key);
+    
+    /** Like xinner[key], but skips calling [] if key.isnull(). */
+    UniConf _sub(const UniConfKey &key);
     
     class Iter;
     class RecursiveIter;

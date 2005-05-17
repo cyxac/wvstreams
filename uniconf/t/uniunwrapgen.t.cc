@@ -1,5 +1,6 @@
 #include "uniunwrapgen.h"
 #include "uniconfroot.h"
+#include "unitempgen.h"
 #include "wvtest.h"
 
 static int itcount(UniConfGen::Iter *i)
@@ -27,16 +28,50 @@ WVTEST_MAIN("unwrap basics")
     
     UniUnwrapGen g(cfg);
     WVPASSEQ(itcount(g.iterator("/")), 4);
+    WVPASSEQ(itcount(g.recursiveiterator("/foo")), 6);
+    WVPASSEQ(itcount(g.recursiveiterator("/foo2")), 6);
     WVPASSEQ(itcount(g.recursiveiterator("/foo3")), 6);
-    
-#if SOMEONE_FIXES_MOUNTGEN_RECURSIVEITER
+
     WVPASSEQ(itcount(g.recursiveiterator("/")), 23);
-#endif
-    
+
     cfg.xset("foo3/fork", "forky");
     WVPASSEQ(itcount(g.recursiveiterator("/foo")), 7);
 
-#if SOMEONE_FIXES_MOUNTGEN_RECURSIVEITER
     WVPASSEQ(itcount(g.recursiveiterator("/")), 26);
-#endif
+}
+
+
+WVTEST_MAIN("unwrapgen root")
+{
+    UniTempGen *temp = new UniTempGen;
+    UniConfRoot cfg(temp, true);
+
+    cfg.xsetint("/a/b/c", 5);
+    
+    WVPASS(temp->exists("/a/b"));
+    WVPASS(!temp->get("/a/b").isnull());
+    WVFAIL(temp->exists("a/b/"));
+    WVFAIL(!temp->get("a/b/").isnull());
+    
+    WVPASS(cfg["/a/b"].exists());
+    WVFAIL(cfg["/a/b/"].exists());
+    WVFAIL(cfg["/a/b"][""].exists());
+    WVFAIL(!cfg["/a/b"][""].getme().isnull());
+    
+    UniUnwrapGen *g = new UniUnwrapGen(cfg["a"]);
+    WVPASS(g->exists("/"));
+    WVPASS(!g->get("/").isnull());
+    WVPASS(g->exists(""));
+    WVPASS(!g->get("").isnull());
+    WVPASS(g->exists("b"));
+    WVPASS(!g->get("b").isnull());
+    WVFAIL(g->exists("b/"));
+    WVFAIL(!g->get("b/").isnull());
+    
+    UniConfRoot gcfg(g, true);
+    WVPASS(gcfg.exists());
+//    WVFAIL(gcfg[""].exists());
+    WVPASS(gcfg["b"].exists());
+    WVFAIL(gcfg["b/"].exists());
+    WVFAIL(gcfg["b"][""].exists());
 }

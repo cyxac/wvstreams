@@ -97,28 +97,49 @@ char *trim_string(char *string, char c)
 // return the string formed by concatenating string 'a' and string 'b' with
 // the 'sep' character between them.  For example,
 //    spacecat("xx", "yy", ";")
+// returns "xx;yy", and
+//    spacecat("xx;;", "yy", ";")
+// returns "xx;;;yy", and
+//    spacecat("xx;;", "yy", ";", true)
 // returns "xx;yy".
-// 
+//
 // This function is much faster than the more obvious WvString("%s;%s", a, b),
 // so it's useful when you're producing a *lot* of string data.
-WvString spacecat(WvStringParm a, WvStringParm b, char sep)
+WvString spacecat(WvStringParm a, WvStringParm b, char sep, bool onesep)
 {
-    int alen = a ? strlen(a) : 0;
-    int blen = b ? strlen(b) : 0;
+    size_t alen = strlen(a);
+    size_t blen = strlen(b);
+
+    // If we only want one separator, eat away at the back of string a
+    if (onesep && alen)
+    {
+	while (a[alen-1] == sep)
+	    --alen;
+    }
+
+    // Create the destination string, and give it an appropriate size.
+    // Then, fill it with string a.
     WvString s;
     s.setsize(alen + blen + 2);
     char *cptr = s.edit();
 
-    if (a)
-	memcpy(cptr, a, alen);
+    memcpy(cptr, a, alen);
 
+    // Write the separator in the appropriate spot.
     cptr[alen] = sep;
 
-    if (b)
-	memcpy(cptr + alen + 1, b, blen);
+    // If we only want one separator, eat away at the from of string b.
+    size_t boffset = 0;
+    if (onesep)
+    {
+	while (b[boffset] == sep)
+	    ++boffset;
+    }
 
-    cptr[alen + 1 + blen] = 0;
-    
+    // Now copy the second half of the string in and terminate with a NUL.
+    memcpy(cptr+alen+1, b+boffset, blen-boffset);
+    cptr[alen+1+blen-boffset] = 0;
+
     return s;
 }
 
@@ -174,7 +195,7 @@ char *snip_string(char *haystack, char *needle)
 char *strlwr(char *string)
 {
     char *p = string;
-    while (*p)
+    while (p && *p)
     {
     	*p = tolower(*p);
     	p++;
@@ -187,7 +208,7 @@ char *strlwr(char *string)
 char *strupr(char *string)
 {
     char *p = string;
-    while (*p)
+    while (p && *p)
     {
 	*p = toupper(*p);
 	p++;
@@ -200,6 +221,8 @@ char *strupr(char *string)
 // true if all the characters in "string" are isalnum().
 bool is_word(const char *p)
 {
+    assert(p);
+
     while (*p)
     {
     	if(!isalnum(*p++))
@@ -499,74 +522,144 @@ WvString getdirname(WvStringParm fullname)
 // bunch of digits, and the default unit (indexed by size); and turns
 // them into a WvString that's formatted to human-readable rounded
 // sizes, with one decimal place.
-WvString _sizetoa(unsigned long long digits, int size = 0)
+static WvString _sizetoa(unsigned long long size, int shift,
+        RoundingMethod rounding_method)
 {
     // Programmatically determine the units.  In order, these are:
     // bytes, kilobytes, megabytes, gigabytes, terabytes, petabytes,
     // exabytes, zettabytes, yottabytes.  Note that these are SI
     // prefixes, not binary ones.
-    static char* size_name[] = { "B", "KB", "MB", "GB", "TB",
-				 "PB", "EB", "ZB", "YB", NULL };
+    static const struct
+    {
+        const char *name;
+        unsigned long long base_over_10;
+    } units[] =
+    {
+        { "KB", 100ull },
+        { "MB", 100000ull },
+        { "GB", 100000000ull },
+        { "TB", 100000000000ull },
+        { "PB", 100000000000000ull },
+        { "EB", 100000000000000000ull },
+        { NULL, 0 }
+    };
 
-    // Let's loop, until we can get our "units" to less-than 1000.
-    // But we also have to keep enough significant figures for two
-    // decimal places, in order to round properly.  Therefore, we
-    // should stop looping at 1000000.
-    while (digits >= 1000000) {
-	// We'll make an exception for 1000 TB and higher, since we
-	// have no larger unit.  Well, I guess we can use exabytes,
-	// but that's a little futher in the future.
-	if (size_name[size + 1] == NULL)
-	    break;
+    // To understand rounding, consider the display of the value 999949.
+    // For each rounding method the string displayed should be:
+    // ROUND_DOWN: 999.9 KB
+    // ROUND_UP_AT_POINT_FIVE: 999.9 KB 
+    // ROUND_UP: 1.0 MB
+    // On the other hand, for the value 999950, the strings should be:
+    // ROUND_DOWN: 999.9 KB
+    // ROUND_DOWN_AT_POINT_FIVE: 999.9 KB 
+    // ROUND_UP_AT_POINT_FIVE: 1.0 MB
+    // ROUND_UP: 1.0 MB
+    
+    int unit = 0;
+    unsigned long long significant_digits;
+    while (true)
+    {
+        switch (rounding_method)
+        {
+            case ROUND_DOWN:
+                significant_digits =
+                    size / units[unit].base_over_10;
+                break;
+                             
+            case ROUND_DOWN_AT_POINT_FIVE:
+                significant_digits =
+                    (size + units[unit].base_over_10 / 2 - 1) / units[unit].base_over_10;
+                break;
 
-	// OK.  Let's go up another unit.
-	digits /= 1000;
-	size += 1;
-    }
+            case ROUND_UP_AT_POINT_FIVE:
+                significant_digits =
+                    (size + units[unit].base_over_10 / 2) / units[unit].base_over_10;
+                break;
 
-    // Now we can perform our rounding calculation.  We use the
-    // algorithm derived from grade school.  If it is a 5 or higher,
-    // round up.
-    unsigned long long units = digits / 1000;
-    unsigned tenths = digits % 1000 / 100;
-    unsigned hundredths = digits % 100 / 10;
-    if (hundredths >= 5)
-	tenths += 1;
-    if (tenths >= 10) {
-	tenths = 0;
-	units += 1;
-    }
-    if (units >= 1000 && (size_name[size + 1] != NULL)) {
-	units /= 1000;
-	tenths = 0;
-	size += 1;
+            case ROUND_UP:
+                significant_digits =
+                    (size + units[unit].base_over_10 - 1) / units[unit].base_over_10;
+                break;
+        }
+        if (significant_digits < 10000 || !units[unit+shift+1].name)
+            break;
+        ++unit;
     }
 
     // Now we can return our result.
-    return WvString("%s.%s %s", units, tenths, size_name[size]);
+    return WvString("%s.%s %s",
+            significant_digits / 10,
+            significant_digits % 10,
+            units[unit+shift].name);
 }
 
-WvString sizetoa(unsigned long long blocks, unsigned int blocksize)
+WvString sizetoa(unsigned long long blocks, unsigned int blocksize,
+        RoundingMethod rounding_method)
 {
     unsigned long long bytes = blocks * blocksize;
 
-    // Test if we are dealing in just bytes.  Plus, we should ensure
-    // that we didn't overflow.  (Although that is highly unlikely,
-    // with a 64-bit integer.)
-    if ((bytes < 1000) && !(blocks * blocksize / 1000))
+    // Test if we are dealing in just bytes.
+    if (bytes < 1000)
         return WvString("%s bytes", blocks * blocksize);
 
-    return _sizetoa(bytes, 1);
+    return _sizetoa(bytes, 0, rounding_method);
 }
 
 
-WvString sizektoa(unsigned int kbytes)
+WvString sizektoa(unsigned int kbytes, RoundingMethod rounding_method)
 {
     // Test if we are dealing in just kilobytes.
     if (kbytes < 1000)
         return WvString("%s KB", kbytes);
 
-    return _sizetoa(kbytes, 2);
+    return _sizetoa(kbytes, 1, rounding_method);
+}
+
+WvString secondstoa(unsigned int total_seconds)
+{
+    WvString result("");
+
+    unsigned int days = total_seconds / (3600*24);
+    total_seconds %= (3600*24);
+    unsigned int hours = total_seconds / 3600;
+    total_seconds %= 3600;
+    unsigned int mins = total_seconds / 60;
+    unsigned int secs = total_seconds % 60; 
+
+    int num_elements = (days > 0) + (hours > 0) + (mins > 0);
+
+    if (days > 0)
+    {
+        result.append(days);
+        result.append(days > 1 ? " days" : " day");
+        num_elements--;
+        if (num_elements > 1)
+            result.append(", ");
+        else if (num_elements == 1)
+            result.append(" and ");
+    }
+    if (hours > 0)
+    {
+        result.append(hours);
+        result.append(hours > 1 ? " hours" : " hour");
+        num_elements--;
+        if (num_elements > 1)
+            result.append(", ");
+        else if (num_elements == 1)
+            result.append(" and ");
+    }
+    if (mins > 0)
+    {
+        result.append(mins);
+        result.append(mins > 1 ? " minutes" : " minute");
+    }
+    if (days == 0 && hours == 0 && mins == 0)
+    {
+        result.append(secs);
+        result.append(secs != 1 ? " seconds" : " second");
+    }
+
+    return result;
 }
 
 WvString strreplace(WvStringParm s, WvStringParm a, WvStringParm b)
@@ -718,6 +811,9 @@ WvString metriculate(const off_t i)
 
 WvString afterstr(WvStringParm line, WvStringParm a)
 {
+    if (!line || !a)
+	return WvString::null;
+	
     char *loc = strstr(line, a);
     if (loc == 0)
 	return "";
@@ -731,8 +827,11 @@ WvString afterstr(WvStringParm line, WvStringParm a)
 
 WvString beforestr(WvStringParm line, WvStringParm a)
 {
+    if (!line || !a)
+       return WvString::null;
+
     WvString ret = line;
-    ret.unique();    
+    ret.unique();     
     char *loc = strstr(ret, a);
 
     if (loc == 0)
@@ -989,5 +1088,17 @@ WvString local_date(time_t when)
     strftime(out.edit(), 80, "%b %d %I:%M:%S %p", tmwhen);
 
     return out;
+}
+
+// Removes any trailing punctuation ('.', '?', or '!') from the line
+WvString depunctuate(WvStringParm line)
+{
+    WvString ret = line;
+    char * edit = ret.edit();
+    int last = ret.len() - 1;
+    if (edit[last] == '.' || edit[last] == '?' || edit[last] == '!')
+        edit[last] = '\0';
+
+    return ret;
 }
 

@@ -119,7 +119,6 @@ WVTEST_MAIN("wvconfemu iterating while not mounted at root of UniConf tree")
     UniConfGen *unigen = new UniTempGen;
     UniConfRoot uniconf(unigen);
     WvConfEmu cfg(uniconf["/branch"]);
-    unigen = new UniTempGen;
     WvString section = "TestSection", entry = "TestEntry",
         value = "TestValue", notValue = "NotTestValue";
         
@@ -227,3 +226,59 @@ WVTEST_MAIN("wvconfemu setbool")
     cfg.del_setbool(&c3, "Foo", "Bar");
 }
 
+WVTEST_MAIN("wvconfemu isempty")
+{
+    UniConfGen *unigen = new UniTempGen;
+    UniConfRoot uniconf(unigen);
+    WvConfEmu cfg(uniconf["cfg"]);
+
+    cfg.setint("Montreal", "dcoombs", 1);
+
+    WvConfigSectionEmu *sect = cfg["Montreal"];
+    WVPASS(sect && !sect->isempty());
+
+    cfg.set("Montreal", "dcoombs", NULL);
+    WVPASS(!sect || sect->isempty());
+
+    bool never_ran = true;
+    if (sect)
+    {
+	WvConfigSectionEmu::Iter i(*sect);
+	for (i.rewind(); i.next(); )
+	    never_ran = false;
+    }
+    WVPASS(never_ran);
+}
+
+WVTEST_MAIN("wvconfemu empty section")
+{
+    int pass;
+    for (pass=0; pass<2; ++pass)
+    {
+        UniConfRoot uni("temp:");
+        switch (pass)
+        {
+            case 0:
+                uni.xset("Users/test", "passwd");
+                break;
+
+            case 1:
+                uni.xset("Users/test", "");
+                break;
+        }
+
+        WvConfEmu cfg(uni);
+        
+        int num_items = 0;
+        WvConfigSectionList::Iter sect(cfg);
+        for (sect.rewind(); sect.next(); )
+        {
+            WvConfigEntryList::Iter ent(*sect);
+            for (ent.rewind(); ent.next(); )
+            {
+                ++num_items;
+            }
+        }
+        WVPASS(num_items == 1);
+    }
+}
