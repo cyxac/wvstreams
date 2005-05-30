@@ -11,7 +11,15 @@
 #include <openssl/err.h>
 #include <assert.h>
 
-#ifdef _WIN32
+#ifndef _WIN32
+# if HAVE_ARGZ_H
+#  include <argz.h>
+# else
+#  if HAVE_ERRNO_H
+#   include <errno.h>
+#  endif
+# endif
+#else
 #undef errno
 #define errno GetLastError()
 typedef DWORD error_t;
@@ -421,6 +429,7 @@ bool WvSSLStream::isok() const
 
 bool WvSSLStream::pre_select(SelectInfo &si)
 {
+    bool result = WvStreamClone::pre_select(si);
     // the SSL library might be keeping its own internal buffers
     // or we might have left buffered data behind deliberately
     if (si.wants.readable && (read_pending || read_bouncebuf.used()))
@@ -429,7 +438,6 @@ bool WvSSLStream::pre_select(SelectInfo &si)
 	return true;
     }
 
-    bool result = WvStreamClone::pre_select(si);
 //    debug("in pre_select (%s)\n", result);
     return result;
 }

@@ -51,4 +51,15 @@ bool samedate(WvStringParm dir1, WvStringParm dir2, WvStringParm relname);
  */
 bool wvfnmatch(WvStringList &patterns, WvStringParm name, int flags = 0);
 
+/**
+ * Basically our own implementation of the NetBSD lchmod() call.
+ */
+int wvchmod(const char *path, mode_t mode);
+
+
+/**
+ * A simple helper function to get the current umask.
+ */
+mode_t get_umask();
+
 #endif // __WVFILEUTILS_H

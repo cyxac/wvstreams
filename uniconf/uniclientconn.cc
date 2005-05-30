@@ -20,6 +20,8 @@ const UniClientConn::CommandInfo UniClientConn::cmdinfos[
     { "del", "del <key>: deletes the key" },
     { "subt", "subt <key> <recurse?>: enumerates the children of a key" },
     { "hchild", "hchild <key>: returns whether a key has children" },
+    { "commit", "commit: commits changes to disk" },
+    { "refresh", "refresh: refresh contents from disk" },
     { "quit", "quit: kills the session nicely" },
     { "help", "help: returns this help text" },
     
@@ -44,14 +46,12 @@ UniClientConn::UniClientConn(IWvStream *_s, WvStringParm dst) :
     log(WvString("UniConf to %s", dst.isnull() && _s->src() ? *_s->src() : WvString(dst)),
     WvLog::Debug5), closed(false), payloadbuf("")
 {
-    WvIStreamList::globallist.append(this, false);
     log("Opened\n");
 }
 
 
 UniClientConn::~UniClientConn()
 {
-    WvIStreamList::globallist.unlink(this);
     close();
 }
 
@@ -74,7 +74,7 @@ WvString UniClientConn::readmsg()
     {
 	// use lots of readahead to prevent unnecessary runs through select()
 	// during heavy data transfers.
-        char *line = getline('\n', 20480);
+        char *line = getline(0, '\n', 20480);
         if (line)
         {
             msgbuf.putstr(line);

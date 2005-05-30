@@ -5,11 +5,11 @@
  * A generator for .ini files.
  */
 #include "uniinigen.h"
-#include "unitempgen.h"
-#include "wvtclstring.h"
 #include "strutils.h"
+#include "unitempgen.h"
 #include "wvfile.h"
 #include "wvmoniker.h"
+#include "wvtclstring.h"
 #include <ctype.h>
 
 static IUniConfGen *creator(WvStringParm s, IObject *, void *)
@@ -33,6 +33,7 @@ UniIniGen::UniIniGen(WvStringParm _filename, int _create_mode)
     //log(WvLog::Debug1, "Using IniFile \"%s\"\n", filename);
     // consider the generator dirty until it is first refreshed
     dirty = true;
+    memset(&old_st, 0, sizeof(old_st));
 }
 
 
@@ -45,7 +46,7 @@ bool UniIniGen::refresh()
 {
     WvFile file(filename, O_RDONLY);
 
-    #ifndef _WIN32
+#ifndef _WIN32
     struct stat statbuf;
     if (file.isok() && fstat(file.getrfd(), &statbuf) == -1)
     {
@@ -59,7 +60,19 @@ bool UniIniGen::refresh()
 	file.close();
 	file.seterr(EAGAIN);
     }
-    #endif
+    
+    if (file.isok() // guarantes statbuf is valid from above
+	&& statbuf.st_ctime == old_st.st_ctime
+	&& statbuf.st_dev == old_st.st_dev
+	&& statbuf.st_ino == old_st.st_ino
+	&& statbuf.st_blocks == old_st.st_blocks
+	&& statbuf.st_size == old_st.st_size)
+    {
+	log(WvLog::Debug, "refresh: file hasn't changed; do nothing.\n");
+	return true;
+    }
+    memcpy(&old_st, &statbuf, sizeof(statbuf));
+#endif
 
     if (!file.isok())
     {
@@ -199,6 +212,7 @@ bool UniIniGen::refresh()
 
     WVRELEASE(newgen);
 
+    UniTempGen::refresh();
     return true;
 }
 
@@ -237,27 +251,43 @@ bool UniIniGen::refreshcomparator(const UniConfValueTree *a,
 
 
 #ifndef _WIN32
-bool UniIniGen::commit_atomic(WvString real_filename)
+bool UniIniGen::commit_atomic(WvStringParm real_filename)
 {
-    WvString tmp_filename("%s.tmp%s", real_filename, getpid());
-    WvFile file(tmp_filename, O_WRONLY|O_TRUNC|O_CREAT, create_mode);
     struct stat statbuf;
-    
-    if (file.geterr()
-	|| lstat(real_filename, &statbuf) == -1
-	|| !S_ISREG(statbuf.st_mode))
+
+    if (lstat(real_filename, &statbuf) == -1)
     {
-	unlink(tmp_filename);
-        file.close();
-        return false;
+	if (errno != ENOENT)
+	    return false;
     }
-    
-    save(file, *root); // write the changes out to our temp file
-    
-    file.close();
-    if (rename(tmp_filename, real_filename) == -1
-            || file.geterr())
+    else
+	if (!S_ISREG(statbuf.st_mode))
+	    return false;
+
+    WvString tmp_filename("%s.tmp%s", real_filename, getpid());
+    WvFile file(tmp_filename, O_WRONLY|O_TRUNC|O_CREAT, 0000);
+
+    if (file.geterr())
     {
+	log(WvLog::Warning, "Can't write '%s': %s\n",
+	    filename, strerror(errno));
+	unlink(tmp_filename);
+	file.close();
+	return false;
+    }
+
+    save(file, *root); // write the changes out to our temp file
+
+    mode_t theumask = umask(0);
+    umask(theumask);
+    fchmod(file.getwfd(), create_mode & ~theumask);
+
+    file.close();
+
+    if (file.geterr() || rename(tmp_filename, real_filename) == -1)
+    {
+        log(WvLog::Warning, "Can't write '%s': %s\n",
+	    filename, strerror(errno));
         unlink(tmp_filename);
 	return false;
     }
@@ -269,11 +299,14 @@ bool UniIniGen::commit_atomic(WvString real_filename)
 
 void UniIniGen::commit()
 {
-    if (!dirty) return;
+    if (!dirty)
+	return;
+
+    UniTempGen::commit();
 
 #ifdef _WIN32
-    // Windows doesn't support all that fancy stuff, just open the file
-    //   and be done with it
+    // Windows doesn't support all that fancy stuff, just open the
+    // file and be done with it
     WvFile file(filename, O_WRONLY|O_TRUNC|O_CREAT, create_mode);
     save(file, *root); // write the changes out to our file
     file.close();
@@ -284,16 +317,14 @@ void UniIniGen::commit()
 	return;
     }
 #else
-    char resolved_path[PATH_MAX];
     WvString real_filename(filename);
+    char resolved_path[PATH_MAX];
 
     if (realpath(filename, resolved_path) != NULL)
 	real_filename = resolved_path;
-    
-    // first try to overwrite the file atomically
+
     if (!commit_atomic(real_filename))
     {
-        // if not, overwrite it in place
         WvFile file(real_filename, O_WRONLY|O_TRUNC|O_CREAT, create_mode);
         struct stat statbuf;
 
@@ -305,7 +336,8 @@ void UniIniGen::commit()
         }
 
         fchmod(file.getwfd(), (statbuf.st_mode & 07777) | S_ISVTX);
-        save(file, *root); // write the changes out to our file
+
+        save(file, *root);
     
         if (!file.geterr())
         {
@@ -314,15 +346,9 @@ void UniIniGen::commit()
 	    statbuf.st_mode = statbuf.st_mode & ~S_ISVTX;
 	    fchmod(file.getwfd(), statbuf.st_mode & 07777);
 	}
-        
-        file.close();
-        
-        if (file.geterr())
-        {
-            log(WvLog::Warning, "Can't write '%s': %s\n",
-	        filename, file.errstr());
-            return;
-        }
+	else
+	    log(WvLog::Warning, "Error writing '%s' ('%s'): %s\n",
+		filename, real_filename, file.errstr());
     }
 #endif
 
