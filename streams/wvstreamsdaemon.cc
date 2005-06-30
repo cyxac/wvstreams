@@ -16,9 +16,9 @@ WvStreamsDaemon::WvStreamsDaemon(WvStringParm name, WvStringParm version,
     : WvDaemon(name, version,
                 WvDaemonCallback(this, &WvStreamsDaemon::start_cb),
                 WvDaemonCallback(this, &WvStreamsDaemon::run_cb),
-                WvDaemonCallback(this, &WvStreamsDaemon::stop_cb)),
-                callback(cb), userdata(ud)
+                WvDaemonCallback(this, &WvStreamsDaemon::stop_cb))
 {
+    setcallback(cb, ud);
     signal(SIGPIPE, SIG_IGN);
 }
 
@@ -41,13 +41,16 @@ void WvStreamsDaemon::run_cb(WvDaemon &daemon, void *)
 
 void WvStreamsDaemon::stop_cb(WvDaemon &daemon, void *)
 {
+    WvIStreamList::Iter stream(streams);
+    for (stream.rewind(); stream.next(); )
+        WvIStreamList::globallist.unlink(stream.ptr());
     streams.zap();
 }
 
-void WvStreamsDaemon::stop_full_close_cb(WvDaemon &daemon, void *)
+void WvStreamsDaemon::stop_full_close_cb(WvDaemon &daemon, void *ud)
 {
+    stop_cb(daemon, ud);
     WvIStreamList::globallist.zap();
-    streams.zap();
 }
 
 void WvStreamsDaemon::add_stream(IWvStream *istream,
@@ -103,3 +106,8 @@ void WvStreamsDaemon::die_close_cb(const char *id, WvStream &)
     }
 }
 
+void WvStreamsDaemon::setcallback(WvStreamsDaemonCallback cb, void *ud)
+{
+    callback = cb;
+    userdata = ud;
+}

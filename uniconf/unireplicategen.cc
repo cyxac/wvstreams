@@ -30,10 +30,9 @@ static IUniConfGen *creator(WvStringParm s, IObject *obj, void *)
     }
     if (gens.isempty())
     {
-    	WvString encoded_monikers = wvtcl_unescape(s);
-    	DPRINTF("encoded_monikers = %s\n", encoded_monikers.cstr());
+    	DPRINTF("encoded_monikers = %s\n", s.cstr());
     	WvStringList monikers;
-    	wvtcl_decode(monikers, encoded_monikers);
+    	wvtcl_decode(monikers, s);
     	DPRINTF("monikers = %s\n", monikers.join(",").cstr());
     	
     	WvStringList::Iter i(monikers);
@@ -69,12 +68,20 @@ UniReplicateGen::UniReplicateGen(const IUniConfGenList &_gens,
     	if (gen)
     	{
     	    gens.append(gen, true);
-            gen->gen->setcallback(UniConfGenCallback(this,
+            gen->gen->add_callback(this, UniConfGenCallback(this,
             	&UniReplicateGen::deltacallback), gen);
         }
     }
     
     replicate();
+}
+
+
+UniReplicateGen::~UniReplicateGen()
+{
+    GenList::Iter i(gens);
+    for (i.rewind(); i.next(); )
+	i->gen->del_callback(this);
 }
 
 
@@ -84,7 +91,7 @@ void UniReplicateGen::prepend(IUniConfGen *_gen, bool auto_free)
     if (gen)
     {
     	gens.prepend(gen, true);
-        gen->gen->setcallback(UniConfGenCallback(this,
+        gen->gen->add_callback(this, UniConfGenCallback(this,
             &UniReplicateGen::deltacallback), gen);
             
         replicate();
@@ -98,7 +105,7 @@ void UniReplicateGen::append(IUniConfGen *_gen, bool auto_free)
     if (gen)
     {
     	gens.append(gen, true);
-        gen->gen->setcallback(UniConfGenCallback(this,
+        gen->gen->add_callback(this, UniConfGenCallback(this,
             &UniReplicateGen::deltacallback), gen);
             
         replicate();

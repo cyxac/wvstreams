@@ -195,12 +195,13 @@ private:
 UniTransactionGen::UniTransactionGen(IUniConfGen *_base)
     : root(NULL), base(_base)
 {
-    base->setcallback(
+    base->add_callback(this,
 	UniConfGenCallback(this, &UniTransactionGen::gencallback), NULL);
 }
 
 UniTransactionGen::~UniTransactionGen()
 {
+    base->del_callback(this);
     WVRELEASE(base);
     if (root)
 	delete root;
@@ -257,13 +258,21 @@ void UniTransactionGen::commit()
 	// We ignore callbacks during commit() so that we don't waste
 	// time in gencallback() for every set() we make during
 	// apply_changes().
-	base->setcallback(UniConfGenCallback(), NULL);
+	base->del_callback(this);
 	apply_changes(root, UniConfKey());
+	base->add_callback(this,
+	    UniConfGenCallback(this, &UniTransactionGen::gencallback), NULL);
+	
+	// make sure the inner generator also commits
+	base->commit();
+
+	// save deleting the root till now so we can hide any
+	// redundant notifications caused by the base->commit()
 	delete root;
 	root = NULL;
-	base->setcallback(
-	    UniConfGenCallback(this, &UniTransactionGen::gencallback), NULL);
     }
+    
+    // no need to base->commit() if we know we haven't changed anything!
 }
 
 bool UniTransactionGen::refresh()
@@ -275,8 +284,13 @@ bool UniTransactionGen::refresh()
 	delete root;
 	root = NULL;
 	unhold_delta();
+	
+	// no need to base->commit() here, since the inner generator never
+	// saw any changes
     }
-    return true;
+    
+    // must always base->refresh(), even if we didn't change anything
+    return base->refresh();
 }
 
 UniConfGen::Iter *UniTransactionGen::iterator(const UniConfKey &key)

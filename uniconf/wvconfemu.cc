@@ -158,6 +158,9 @@ void WvConfigSectionEmu::Iter::rewind()
 WvLink *WvConfigSectionEmu::Iter::next()
 {
     while (iter.next())
+    {
+        // WvConf-enabled code expects all set keys to be non-empty;
+        // enforce this behaviour
 	if (!!iter->getme())
 	{
 	    /*
@@ -169,6 +172,7 @@ WvLink *WvConfigSectionEmu::Iter::next()
 	    assert(entry);
 	    return &link;
 	}
+    }
 
     return NULL;
 }
