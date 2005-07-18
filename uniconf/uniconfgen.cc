@@ -19,13 +19,13 @@ UUID_MAP_BEGIN(UniConfGen)
 
 UniConfGen::UniConfGen()
 {
-    cbdata = NULL;
     hold_nesting = 0;
 }
 
 
 UniConfGen::~UniConfGen()
 {
+    assert(cblist.isempty());
 }
 
 
@@ -70,8 +70,9 @@ void UniConfGen::flush_delta()
 
 void UniConfGen::dispatch_delta(const UniConfKey &key, WvStringParm value)
 {
-    if (cb)
-        cb(key, value, cbdata);
+    WvList<CbInfo>::Iter i(cblist);
+    for (i.rewind(); i.next(); )
+	i->cb(key, value, i->userdata);
 }
 
 
@@ -88,6 +89,14 @@ void UniConfGen::delta(const UniConfKey &key, WvStringParm value)
         deltas.add(new UniConfPair(key, value), true);
         unhold_delta();
     }
+}
+
+
+void UniConfGen::setv_naive(const UniConfPairList &pairs)
+{
+    UniConfPairList::Iter pair(pairs);
+    for (pair.rewind(); pair.next(); )
+	set(pair->key(), pair->value());
 }
 
 
@@ -148,11 +157,20 @@ bool UniConfGen::isok()
 }
 
 
-void UniConfGen::setcallback(const UniConfGenCallback &callback,
-			     void *userdata)
+void UniConfGen::add_callback(void *cookie,
+			      const UniConfGenCallback &callback,
+			      void *userdata)
 {
-    cb = callback;
-    cbdata = userdata;
+    cblist.append(new CbInfo(cookie, callback, userdata), true);
+}
+
+
+void UniConfGen::del_callback(void *cookie)
+{
+    WvList<CbInfo>::Iter i(cblist);
+    for (i.rewind(); i.next(); )
+	if (i->cookie == cookie)
+	    i.xunlink();
 }
 
 

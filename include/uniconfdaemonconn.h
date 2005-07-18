@@ -34,7 +34,8 @@ public:
 protected:
     UniConf root;
 
-    virtual void do_malformed();
+    virtual void do_invalid(WvStringParm c);
+    virtual void do_malformed(UniClientConn::Command);
     virtual void do_noop();
     virtual void do_reply(WvStringParm reply);
     virtual void do_get(const UniConfKey &key);
@@ -42,6 +43,8 @@ protected:
     virtual void do_remove(const UniConfKey &key);
     virtual void do_subtree(const UniConfKey &key, bool recursive);
     virtual void do_haschildren(const UniConfKey &key);
+    virtual void do_commit();
+    virtual void do_refresh();
     virtual void do_quit();
     virtual void do_help();
 

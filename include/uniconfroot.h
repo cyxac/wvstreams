@@ -159,10 +159,11 @@ private:
     /** Prunes a branch of the watch tree. */
     void prune(UniWatchInfoTree *node);
     
-    /** Callback from UniMountTreeGen */
+    /** Callback from UniMountTreeGen (FIXME: that's a lie.) */
     void gen_callback(const UniConfKey &key, WvStringParm value, void *userdata);
 
 protected:
+    friend class UniUnwrapGen;
     UniMountGen mounts;
     
 public:

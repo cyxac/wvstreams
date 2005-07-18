@@ -14,6 +14,18 @@
 
 /***** UniMountGen *****/
 
+UniMountGen::UniMountGen()
+{
+    // nothing special
+}
+
+
+UniMountGen::~UniMountGen()
+{
+    zap();
+}
+
+
 WvString UniMountGen::get(const UniConfKey &key)
 {
     UniGenMount *found = findmount(key);
@@ -37,6 +49,51 @@ void UniMountGen::set(const UniConfKey &key, WvStringParm value)
     if (!found)
         return;
     found->gen->set(trimkey(found->key, key), value);
+}
+
+
+struct UniMountGen::UniGenMountPairs
+{
+    UniGenMount *mount;
+    WvString key;
+    UniConfPairList pairs;
+
+    UniGenMountPairs(UniGenMount *_mount)
+	: mount(_mount)
+    {
+	if (mount)
+	    key = mount->key;
+    }
+};
+
+
+void UniMountGen::setv(const UniConfPairList &pairs)
+{
+    UniGenMountPairsDict mountpairs(mounts.count());
+
+    {
+	MountList::Iter m(mounts);
+	for (m.rewind(); m.next(); )
+	    mountpairs.add(new UniGenMountPairs(m.ptr()), true);
+    }
+
+    {
+	UniConfPairList::Iter pair(pairs);
+	for (pair.rewind(); pair.next(); )
+	{
+	    UniGenMount *found = findmount(pair->key());
+	    if (!found)
+		continue;
+	    UniConfPair *trimmed = new UniConfPair(trimkey(found->key,
+							   pair->key()),
+						   pair->value());
+	    mountpairs[found->key]->pairs.add(trimmed, true);
+	}
+    }
+
+    UniGenMountPairsDict::Iter i(mountpairs);
+    for (i.rewind(); i.next(); )
+	i->mount->gen->setv(i->pairs);
 }
 
 
@@ -138,7 +195,7 @@ IUniConfGen *UniMountGen::mountgen(const UniConfKey &key,
 	return NULL;
     
     UniGenMount *newgen = new UniGenMount(gen, key);
-    gen->setcallback(UniConfGenCallback(this,
+    gen->add_callback(this, UniConfGenCallback(this,
 				&UniMountGen::gencallback), &newgen->key);
 
     hold_delta();
@@ -176,7 +233,7 @@ void UniMountGen::unmount(IUniConfGen *gen, bool commit)
     
     if (commit)
         gen->commit();
-    gen->setcallback(UniConfGenCallback(), NULL);
+    gen->del_callback(this);
 
     UniConfKey key(i->key);
     IUniConfGen *next = NULL;
@@ -204,6 +261,13 @@ void UniMountGen::unmount(IUniConfGen *gen, bool commit)
 }
 
 
+void UniMountGen::zap()
+{
+    while (!mounts.isempty())
+	unmount(mounts.first()->gen, false);
+}
+
+
 IUniConfGen *UniMountGen::whichmount(const UniConfKey &key,
 				    UniConfKey *mountpoint)
 {
@@ -214,7 +278,7 @@ IUniConfGen *UniMountGen::whichmount(const UniConfKey &key,
         if (i->key.suborsame(key))
         {
             if (mountpoint)
-                *mountpoint = key;
+                *mountpoint = i->key;
             return i->gen;
         }
     }

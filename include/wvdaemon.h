@@ -110,7 +110,12 @@ class WvDaemon
 
         volatile bool _want_to_die;
         volatile bool _want_to_restart;
+	volatile int _exit_status;
 
+        int _run(const char *argv0);
+
+    protected:
+    
         bool daemonize;
 
         void dec_log_level(void *)
@@ -130,8 +135,8 @@ class WvDaemon
             wvout->print("%s version %s\n", name, version);
             ::exit(0);
         }
-
-        int _run(const char *argv0);
+        
+        WvStringList extra_args;
 
     public:
 
@@ -154,9 +159,10 @@ class WvDaemon
             _want_to_restart = true;
         }
         //! Force the daemon to exit as soon as the run callback exits
-        void die()
+        void die(int status = 0)
         {
             _want_to_die = true;
+	    _exit_status = status;
         }
 
         //! Whether the daemon will restart when the run callback exits

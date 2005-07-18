@@ -30,6 +30,10 @@ class UniConfValueTree;
  * When you call refresh(), all set() calls since the last commit() or
  * refresh() (or since creation if none) are discarded.
  *
+ * WARNING!!!  Your calls to commit() and refresh() will propogate to
+ * any upstream generators.  To prevent this, you will want to use a
+ * UniBachelorGen.
+ *
  * When you use get(), exists(), haschildren(), iterator(), or
  * recursiveiterator(), the results that you get are equivalent to the results
  * that you would have gotten if you had called commit() and then used these
@@ -91,13 +95,14 @@ public:
 
     /***** Overridden methods *****/
     
-    WvString get(const UniConfKey &key);
-    void set(const UniConfKey &key, WvStringParm value);
-    void commit();
-    bool refresh();
-    Iter *iterator(const UniConfKey &key);
-    bool isok();
-    void flush_buffers();
+    virtual WvString get(const UniConfKey &key);
+    virtual void set(const UniConfKey &key, WvStringParm value);
+    virtual void setv(const UniConfPairList &pairs);
+    virtual void commit();
+    virtual bool refresh();
+    virtual Iter *iterator(const UniConfKey &key);
+    virtual bool isok();
+    virtual void flush_buffers();
     
 protected:
     UniConfChangeTree *root;
