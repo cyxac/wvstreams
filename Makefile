@@ -9,7 +9,7 @@ endif
 
 export WVSTREAMS
 
-XPATH=include
+XPATH=include /usr/kerberos/include
 
 include vars.mk
 
