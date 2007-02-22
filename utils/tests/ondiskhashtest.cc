@@ -1,5 +1,5 @@
 #include "wvautoconf.h"
-#if defined(WITH_QDBM) || defined(WITH_BDB)
+#if defined(WITH_BDB)
 #include "wvondiskhash.h"
 #include "wvhashtable.h"
 #include "wvstream.h"
@@ -222,10 +222,6 @@ int main()
 
     HashTester< WvOnDiskHash<WvString,WvString,WvBdbHash> >
         ::go("Anonymous BDB hash", "");
-#endif
-#if defined(WITH_QDBM)
-    HashTester< WvOnDiskHash<WvString,WvString,WvQdbmHash> >
-        ::go("QDBM hash", "test.db");
 #endif
 }
 #else

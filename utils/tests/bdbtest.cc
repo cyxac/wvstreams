@@ -1,7 +1,3 @@
-/*
- * Note: this test program should be exactly the same as the one in
- * qdbmtest.cc, because the APIs should be identical.
- */
 #include "wvautoconf.h"
 #if defined(WITH_BDB)
 #include "wvondiskhash.h"

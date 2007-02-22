@@ -1,5 +1,5 @@
 #include "wvautoconf.h"
-#if defined(WITH_QDBM) || defined(WITH_BDB)
+#if defined(WITH_BDB)
 #include "wvondisklist.h"
 
 int main()

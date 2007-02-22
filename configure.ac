@@ -93,7 +93,6 @@ AC_ARG_ENABLE(testgui,
                              [GUI for unit tests]))
 
 AC_ARG_WITH(bdb, AC_HELP_STRING([--with-bdb], [Berkeley DB 1.x (or compatible)]))
-AC_ARG_WITH(qdbm, AC_HELP_STRING([--with-qdbm], [QDBM]))
 AC_ARG_WITH(openssl, AC_HELP_STRING([--with-openssl], [OpenSSL >= 0.9.7 (required)]))
 AC_ARG_WITH(openslp, AC_HELP_STRING([--with-openslp], [OpenSLP]))
 AC_ARG_WITH(pam, AC_HELP_STRING([--with-pam], [PAM]))
@@ -407,17 +406,6 @@ if test "$with_bdb" != "no"; then
 	      [Define to enable Berkeley DB support.])
 fi
 
-# qdbm
-if test "$with_qdbm" != "no"; then
-    AC_CHECK_HEADERS(villa.h,, [with_qdbm=no])
-    AC_CHECK_LIB(qdbm, vlopen,, [with_qdbm=no])
-
-    if test "$with_qdbm" != "no"; then
-        AC_DEFINE(WITH_QDBM,,
-                  [Define to enable QDBM support.])
-    fi
-fi
-
 # gtk
 #if test "$with_gtk" != "no"; then
 #    CPPFLAGS_save="$CPPFLAGS"
@@ -594,10 +582,6 @@ fi
 # check for missing packages
 missing_required=
 missing_devel=
-if test "$with_qdbm" = "no"; then
-    AC_MSG_WARN([QDBM is missing.])
-    missing_devel=yes
-fi
 if test "$with_pam" = "no"; then
     AC_MSG_WARN([PAM is missing.])
     missing_devel=yes
@@ -667,7 +651,6 @@ AC_SUBST(enable_warnings)
 AC_SUBST(enable_testgui)
 
 AC_SUBST(with_bdb)
-AC_SUBST(with_qdbm)
 AC_SUBST(with_gtk)
 AC_SUBST(with_openslp)
 AC_SUBST(with_openssl)

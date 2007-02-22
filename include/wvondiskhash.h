@@ -25,17 +25,9 @@
  * you may not be the only person to do a next() or find() on this database.
  */
 
-// default to QDBM if available because it's faster
-#ifdef WITH_QDBM
-class WvQdbmHash;
-typedef WvQdbmHash DefaultHash;
-#else
-# ifdef WITH_BDB
+#ifdef WITH_BDB
 class WvBdbHash;
 typedef WvBdbHash DefaultHash;
-# else
-#  error No supported database found!
-# endif
 #endif
 
 template <class K, class D, class Backend = DefaultHash>
@@ -350,51 +342,5 @@ private:
     struct __db *dbf;
 };
 #endif // WITH_BDB
-
-#ifdef WITH_QDBM
-
-// FIXME: the interface for this is quite backwards.  It should be delegating
-// to WvQdbmHash, not inheriting from it!  In the meantime, see WvBdbHash for
-// the API docs... 
-class WvQdbmHash : public WvErrorBase
-{
-    bool persist_dbfile;
-
-public:
-    struct datum
-    {
-        const char *dptr;
-        int dsize;
-    };
-    typedef datum Datum;
-
-    WvQdbmHash(WvStringParm dbfile = WvString::null, bool persist = true);
-    ~WvQdbmHash();
-    
-    void opendb(WvStringParm dbfile = WvString::null, bool persist = true);
-    void closedb();
-    
-    void add(const Datum &key, const Datum &data, bool replace);
-    void remove(const Datum &key);
-    Datum find(const Datum &key);
-    bool exists(const Datum &key);
-    void zap();
-    
-    class IterBase : public WvOnDiskHashIterBase<WvQdbmHash, Datum>
-    {
-    public:
-        IterBase(WvQdbmHash &qdbmhash)
-            : WvOnDiskHashIterBase<WvQdbmHash, Datum>(qdbmhash) {};
-
-        void next(Datum &key, Datum &data);
-    };
-private:
-    Datum saveddata;
-    friend class IterBase;
-    void *dbf;
-
-    void dperr();
-};
-#endif // WITH_QDBM
 
 #endif // __WVONDISKHASH_H

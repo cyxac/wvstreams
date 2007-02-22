@@ -18,7 +18,7 @@ WVTEST_MAIN("dont create files in /tmp")
     WVPASS("after reading /tmp");
     
     s = time(NULL);
-    int before_count_var = wvtest_file_count_prefix("/var/tmp", "qdbm-annoy");
+    int before_count_var = wvtest_file_count_prefix("/var/tmp", "ondisk-annoy");
     printf("before_count_var: elapsed %d\n", static_cast<int>(time(NULL) - s));
     
     WVPASS("tick 2");
@@ -30,7 +30,7 @@ WVTEST_MAIN("dont create files in /tmp")
     WVPASS("tick 4");
 
     s = time(NULL);
-    int after_count_var = wvtest_file_count_prefix("/var/tmp", "qdbm-annoy");
+    int after_count_var = wvtest_file_count_prefix("/var/tmp", "ondisk-annoy");
     printf("after_count_var: elapsed %d\n", static_cast<int>(time(NULL) - s));
     
     WVPASSEQ(before_count_var, after_count_var);
@@ -131,15 +131,6 @@ void itertest()
     WVFAIL(seen[1]);
     WVFAIL(seen[2]);
 }
-
-
-#if 0
-// FIXME: there's an evil leak, bug 7300
-WVTEST_MAIN("WvOnDiskHash with WvQdbmHash backend")
-{
-    itertest<WvQdbmHash>();
-}
-#endif
 
 
 WVTEST_MAIN("WvOnDiskHash with WvBdbHash backend")

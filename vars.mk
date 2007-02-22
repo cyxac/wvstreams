@@ -126,10 +126,6 @@ ifneq ("$(with_bdb)", "no")
   libwvutils.so-LIBS+=-ldb
 endif
 
-ifneq ("$(with_qdbm)", "no")
-  libwvutils.so-LIBS+=-L. -lqdbm
-endif
-
 libwvbase.so-LIBS+=-lxplc-cxx -lm
 libwvbase.so:
 

@@ -45,7 +45,6 @@ OBJSKIP=$(OBJREPLACED) $(OBJFIXME) \
 	utils/wvbdbhash.o \
 	utils/wvfork.o \
 	utils/wvmagiccircle.o \
-	utils/wvqdbmhash.o \
 	utils/wvshmzone.o \
 	utils/wvsubproc.o \
 	ipstreams/wvunixdgsocket.o \

@@ -1,14 +1,14 @@
 
 #include <time.h>
 #include <wvautoconf.h>
-#if defined(WITH_QDBM) || defined(WITH_BDB)
+#if defined(WITH_BDB)
 #include <wvondiskhash.h>
 #endif
 #include <wvlog.h>
 #include <wvstring.h>
 #include <wvtimeutils.h>
 
-#if defined(WITH_QDBM) || defined(WITH_BDB)
+#if defined(WITH_BDB)
 template <class HashType>
 void SpeedDemon(WvStringParm name, int max)
 {
@@ -78,11 +78,5 @@ int main(int argc, char **argv)
     SpeedDemon<WvBdbHash>("BDB hash", numrecords);
 #else
     fprintf(stderr, "Not testing BDB hash!\n");
-#endif
-
-#ifdef WITH_QDBM
-    SpeedDemon<WvQdbmHash>("QDBM hash", numrecords);
-#else
-    fprintf(stderr, "Not testing QDBM hash!\n");
 #endif
 }
