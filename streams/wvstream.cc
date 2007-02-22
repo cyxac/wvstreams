@@ -572,7 +572,7 @@ char *WvStream::blocking_getline(time_t wait_msec, int separator,
     
     //assert(uses_continue_select || wait_msec == 0);
 
-    struct timeval timeout_time;
+    WvTime timeout_time(0);
     if (wait_msec > 0)
         timeout_time = msecadd(wvtime(), wait_msec);
     
