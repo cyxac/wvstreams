@@ -171,6 +171,8 @@ CPPFLAGS="$CPPFLAGS_save"
 # Function checks
 AC_FUNC_ALLOCA
 
+AC_CHECK_HEADERS(execinfo.h)
+
 # Initialise gnulib
 gl_INIT
 

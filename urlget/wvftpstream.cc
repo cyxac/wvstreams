@@ -35,7 +35,7 @@ char *alloca ();
 #include "wvtcp.h"
 #include "wvsslstream.h"
 #include "strutils.h"
-#include <malloc.h> // for alloca()... FIXME: which we shouldn't be using!
+#include <stdlib.h> // for alloca()... FIXME: which we shouldn't be using!
 
 WvFtpStream::WvFtpStream(const WvIPPortAddr &_remaddr, WvStringParm _username,
                 WvStringParm _password)

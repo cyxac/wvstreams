@@ -12,7 +12,7 @@
 #include "wvbuf.h"
 #include "wvbase64.h"
 #include "strutils.h"
-#ifndef _WIN32
+#ifdef HAVE_EXECINFO_H
 #include <execinfo.h> // FIXME: add a WvCrash feature for explicit dumps
 #endif
 
@@ -50,7 +50,7 @@ WvHttpStream::~WvHttpStream()
 {
     log(WvLog::Debug2, "Deleting.\n");
 
-#ifndef _WIN32
+#ifdef HAVE_EXECINFO_H
     void* trace[10];
     int count = backtrace(trace, sizeof(trace)/sizeof(trace[0]));
     char** tracedump = backtrace_symbols(trace, count);
@@ -71,7 +71,7 @@ void WvHttpStream::close()
 {
     log("close called\n");
     
-#ifndef _WIN32
+#ifdef HAVE_EXECINFO_H
     void *trace[10];
     int count = backtrace(trace, sizeof(trace)/sizeof(trace[0]));
     char** tracedump = backtrace_symbols(trace, count);

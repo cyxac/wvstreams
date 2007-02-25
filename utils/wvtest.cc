@@ -8,7 +8,7 @@
 #include "wvautoconf.h"
 #include <stdio.h>
 #include <string.h>
-#include <malloc.h>
+#include <stdlib.h>
 #include <ctype.h>
 #ifdef _WIN32
 #include <io.h>
@@ -16,7 +16,7 @@
 #else
 #include <unistd.h>
 #endif
-#include <wait.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <signal.h>
 
@@ -183,7 +183,7 @@ int WvTest::run_all(const char * const *prefixes)
 		|| prefix_match(cur->idstr, prefixes)
 		|| prefix_match(cur->descr, prefixes)))
 	{
-            pid_t child;
+            pid_t child = 0;
             if (run_twice)
             {
                 // I see everything twice!
