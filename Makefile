@@ -1,10 +1,11 @@
 WVSTREAMS=.
 include wvrules.mk
 
+libwvqt.so-LIBS: $(LIBS_QT)
+
 qt/wvqtstreamclone.o: include/wvqtstreamclone.moc
 qt/wvqthook.o: include/wvqthook.moc
 
-libwvqt.so-LIBS: $(LIBS_QT)
 
 ifneq ("$(with_qt)", "no")
 TESTS+=$(patsubst %.cc,%,$(wildcard qt/tests/*.cc))
@@ -12,7 +13,7 @@ endif
 
 qt/tests/qtstringtest: libwvqt.a
 qt/tests/%: LDLIBS+=libwvqt.a
-qt/tests/%: LDLIBS+=-lqt-mt
+qt/tests/%: LDLIBS+=$(LIBS_QT)
 
 
 CXXFLAGS+=-DWVSTREAMS_RELEASE=\"$(PACKAGE_VERSION)\"
@@ -29,13 +30,9 @@ uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.o $(LIBUNICONF)
 endif
 
 %: %.in
-	@sed -e "s/#VERSION#/$(PACKAGE_VERSION)/g" < $< > $@
-
-%: %.in
 	@sed -e 's/#VERSION#/$(PACKAGE_VERSION)/g' < $< > $@
 
 DISTCLEAN+=uniconf/tests/uni
-
 
 CPPFLAGS += -Iinclude -pipe
 ARFLAGS = rs
@@ -53,37 +50,8 @@ CXXFLAGS+=-ggdb -DDEBUG$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
 CFLAGS+=-ggdb -DDEBUG$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
 endif
 
-ifeq ("$(enable_debug)", "no")
-#CXXFLAGS+=-fomit-frame-pointer
-# -DNDEBUG is disabled because we like assert() to crash
-#CXXFLAGS+=-DNDEBUG
-#CFLAGS+=-DNDEBUG
-endif
-
-ifeq ("$(enable_fatal_warnings)", "yes")
-CXXFLAGS+=-Werror
-# FIXME: not for C, because our only C file, crypto/wvsslhack.c, has
-#        a few warnings.
-#CFLAGS+=-Werror
-endif
-
-ifneq ("$(enable_optimization)", "no")
-CXXFLAGS+=-O2
-#CXXFLAGS+=-felide-constructors
-CFLAGS+=-O2
-endif
-
-ifneq ("$(enable_warnings)", "no")
-CXXFLAGS+=-Wall -Woverloaded-virtual
-CFLAGS+=-Wall
-endif
-
 ifeq ("$(enable_testgui)", "no")
 WVTESTRUN=env
-endif
-
-ifeq ("$(enable_efence)", "yes")
-LDLIBS+=-lefence
 endif
 
 libwvbase.so-LIBS+=-lxplc-cxx -lm
@@ -152,13 +120,6 @@ DEBUG:=$(filter-out no,$(enable_debug))
 
 CXXFLAGS+=$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
 CFLAGS+=$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
-
-ifeq ("$(enable_fatal_warnings)", "yes")
-CXXFLAGS+=-Werror
-# FIXME: not for C, because our only C file, crypto/wvsslhack.c, has
-#        a few warnings.
-#CFLAGS+=-Werror
-endif
 
 ifeq ("$(enable_testgui)", "no")
 WVTESTRUN=env
@@ -255,10 +216,6 @@ else
 endif
 libwvqt.a libwvqt.so: $(call objects,qt)
 libwvqt.so: libwvutils.so libwvstreams.so libwvbase.so
-
-libwvgtk.a libwvgtk.so: $(call objects,gtk)
-libwvgtk.so: -lgtk -lgdk libwvstreams.so libwvutils.so libwvbase.so
-override enable_efence=no
 
 ifneq (${_WIN32},)
   $(error "Use 'make -f Makefile-win32' instead!")

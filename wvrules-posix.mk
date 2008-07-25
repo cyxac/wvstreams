@@ -26,13 +26,6 @@ else
   DEBUG:=0
 endif
 
-ifeq ("$(enable_fatal_warnings)", "yes")
-  CXXFLAGS+=-Werror
-  # FIXME: not for C, because our only C file, crypto/wvsslhack.c, has
-  #        a few warnings on purpose.
-  #CFLAGS+=-Werror
-endif
-
 ifneq ("$(enable_optimization)", "no")
   CXXFLAGS+=-O2
   #CXXFLAGS+=-felide-constructors
@@ -40,26 +33,8 @@ ifneq ("$(enable_optimization)", "no")
 endif
 
 ifneq ("$(enable_warnings)", "no")
-#WLACH:FIXME: Conditional on using MSVC
-#  CXXFLAGS+=-Wall -Woverloaded-virtual
-#  CFLAGS+=-Wall
-endif
-
-ifeq ("$(enable_efence)", "yes")
-  EFENCE:=-lefence
-  USE_EFENCE:=1
-endif
-
-ifeq (USE_EFENCE,1)
-  LDLIBS+=$(EFENCE)
-endif
-
-ifeq ("$(enable_verbose)", "yes")
-  VERBOSE:=1
-endif
-
-ifdef DONT_LIE
-  VERBOSE:=1 $(warning DONT_LIE is deprecated, use VERBOSE instead)
+  CXXFLAGS+=-Wall -Woverloaded-virtual
+  CFLAGS+=-Wall
 endif
 
 #
