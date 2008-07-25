@@ -20,15 +20,8 @@ LDFLAGS += $(LDOPTS) -L$(WVSTREAMS_LIB)
 # Default compiler we use for linking
 WVLINK_CC = $(CXX)
 
-ifeq ("$(enable_debug)", "yes")
-  DEBUG:=1
-else
-  DEBUG:=0
-endif
-
 ifneq ("$(enable_optimization)", "no")
   CXXFLAGS+=-O2
-  #CXXFLAGS+=-felide-constructors
   CFLAGS+=-O2
 endif
 
@@ -37,26 +30,13 @@ ifneq ("$(enable_warnings)", "no")
   CFLAGS+=-Wall
 endif
 
-ifeq ($(DEBUG),1)
-  CFLAGS += -ggdb -DDEBUG=1
-  CXXFLAGS += -ggdb -DDEBUG=1
+DEBUG:=$(filter-out no 0,$(enable_debug))
+ifdef DEBUG
+  CPPFLAGS += -ggdb -DDEBUG=1 $(patsubst %,-DDEBUG_%,$(DEBUG))
   LDFLAGS += -ggdb
 else
-  CFLAGS += -DDEBUG=0
-  CXXFLAGS += -DDEBUG=0
-  #CFLAGS += -DNDEBUG    # I don't like disabling assertions...
-  #CFLAGS += -fomit-frame-pointer  # really evil
-  #CXXFLAGS += -fno-implement-inlines  # causes trouble with egcs 1.0
+  CPPFLAGS += -DDEBUG=0
   LDFLAGS += 
-endif
-
-ifeq ($(PROFILE),1)
-  CFLAGS += -pg
-  LDFLAGS += -pg
-endif
-
-ifeq ($(STATIC),1)
-  LDFLAGS += -static
 endif
 
 define wvlink_ar
