@@ -1,6 +1,4 @@
 WVSTREAMS=.
-WVSTREAMS_SRC= # Clear WVSTREAMS_SRC so wvrules.mk uses its WVSTREAMS_foo
-VPATH=$(libdir)
 include wvrules.mk
 
 qt/wvqtstreamclone.o: include/wvqtstreamclone.moc
@@ -15,7 +13,6 @@ endif
 qt/tests/qtstringtest: libwvqt.a
 qt/tests/%: LDLIBS+=libwvqt.a
 qt/tests/%: LDLIBS+=-lqt-mt
-# qt/tests/%: CPPFLAGS+=-I/usr/include/qt
 
 
 CXXFLAGS+=-DWVSTREAMS_RELEASE=\"$(PACKAGE_VERSION)\"
