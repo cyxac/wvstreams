@@ -557,16 +557,6 @@ if test "$with_xplc" != "no"; then
 	LIBS="$LIBS_save"
 	xplc_pc="xplc-${xplc_version}"
     fi
-    # Not already on the system?  Try building our own.
-    if test "$with_xplc" = "no" && test -d xplc; then
-        WV_APPEND(CPPFLAGS, [-I\$(WVSTREAMS)/xplc/include])
-        WV_APPEND(LDFLAGS, [-L\$(WVSTREAMS)/xplc])
-        AC_CONFIG_SUBDIRS(xplc)
-        build_xplc=yes
-        with_xplc='$(WVSTREAMS)/xplc'
-	xplc_pc='wvxplc'
-	LIBS_XPLC="-lxplc-cxx -lxplc"
-    fi
 fi
 
 # zlib
@@ -679,7 +669,6 @@ AC_SUBST(LIBS_QT)
 AC_SUBST(LIBS_PAM)
 AC_SUBST(LIBS_TCL)
 
-AC_SUBST(build_xplc)
 AC_SUBST(xplc_pc)
 
 AC_SUBST(ac_libs)

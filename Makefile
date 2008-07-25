@@ -273,30 +273,9 @@ XPATH=include
 
 SUBDIRS =
 
-all: runconfigure xplc $(TARGETS)
+all: runconfigure $(TARGETS)
 
-.PHONY: xplc xplc/clean install-xplc
-xplc:
-xplc/clean:
-install-xplc:
-
-ifeq ("$(build_xplc)", "yes")
-
-xplc:
-	$(MAKE) -C xplc
-
-xplc/clean:
-	$(MAKE) -C xplc clean
-
-install-xplc: xplc
-	$(INSTALL) -d $(DESTDIR)$(includedir)/wvstreams/xplc
-	$(INSTALL_DATA) $(wildcard xplc/include/xplc/*.h) $(DESTDIR)$(includedir)/wvstreams/xplc
-	$(INSTALL) -d $(DESTDIR)$(libdir)
-	$(INSTALL_DATA) xplc/libxplc-cxx.a $(DESTDIR)$(libdir)
-
-endif
-
-.PHONY: clean depend dust kdoc doxygen install install-shared install-dev install-xplc uninstall tests dishes dist distclean realclean test
+.PHONY: clean depend dust kdoc doxygen install install-shared install-dev uninstall tests dishes dist distclean realclean test
 
 # FIXME: little trick to ensure that the wvautoconf.h.in file is there
 .PHONY: dist-hack-clean
@@ -313,11 +292,6 @@ endif
 
 dist-hook: dist-hack-clean configure
 	@rm -rf autom4te.cache
-	@if test -d .xplc; then \
-	    echo '--> Preparing XPLC for dist...'; \
-	    $(MAKE) -C .xplc clean patch && \
-	    cp -Lpr .xplc/build/xplc .; \
-	fi
 
 runconfigure: config.mk include/wvautoconf.h
 
@@ -378,9 +352,8 @@ distclean: clean
 	$(call wild_clean,$(DISTCLEAN))
 	@rm -rf autom4te.cache
 	@rm -f pkgconfig/*.pc
-	@rm -f .xplc
 
-clean: depend dust xplc/clean
+clean: depend dust
 	$(subdirs)
 	$(call wild_clean,$(TARGETS) uniconf/daemon/uniconfd \
 		$(GARBAGE) $(TESTS) tmp.ini \
