@@ -34,21 +34,14 @@ endif
 
 DISTCLEAN+=uniconf/tests/uni
 
-CPPFLAGS += -Iinclude -pipe
+CPPFLAGS += -Iinclude
 ARFLAGS = rs
-
-DEBUG:=$(filter-out no,$(enable_debug))
 
 # for O_LARGEFILE
 CXXFLAGS+=${CXXOPTS}
 CFLAGS+=${COPTS}
 CXXFLAGS+=-D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 CFLAGS+=-D_GNU_SOURCE -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
-
-ifneq ($(DEBUG),)
-CXXFLAGS+=-ggdb -DDEBUG$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
-CFLAGS+=-ggdb -DDEBUG$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
-endif
 
 ifeq ("$(enable_testgui)", "no")
 WVTESTRUN=env
@@ -61,21 +54,7 @@ ifneq ("$(with_pam)", "no")
   libwvstreams.so: -lpam
 endif
 
-DEBUG:=$(filter-out no,$(enable_debug))
-
-# debugging function
-showvar = @echo \"'$(1)'\" =\> \"'$($(1))'\"
-tbd = $(error "$@" not implemented yet)
-
-# initialization
-TARGETS:=
-GARBAGE:=
-DISTCLEAN:=
-REALCLEAN:=
-TESTS:=
-NO_CONFIGURE_TARGETS:=
-
-NO_CONFIGURE_TARGETS+=clean ChangeLog depend dust configure dist \
+NO_CONFIGURE_TARGETS+=clean depend dust configure dist \
 		distclean realclean
 
 TARGETS += libwvbase.so libwvbase.a
@@ -108,18 +87,17 @@ TARGETS_A := $(filter %.a,$(TARGETS))
 GARBAGE += $(wildcard lib*.so.*)
 
 DISTCLEAN += autom4te.cache config.mk config.log config.status \
-		include/wvautoconf.h config.cache reconfigure
+		include/wvautoconf.h config.cache reconfigure \
+		stamp-h.in configure include/wvautoconf.h.in
 
-REALCLEAN += stamp-h.in configure include/wvautoconf.h.in
-
-CPPFLAGS += -Iinclude -pipe
+CPPFLAGS += -Iinclude
 ARFLAGS = rs
 RELEASE?=$(PACKAGE_VERSION)
 
+# Add a line like -DDEBUG_whatever for each 'whatever' in the DEBUG string.
 DEBUG:=$(filter-out no,$(enable_debug))
-
-CXXFLAGS+=$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
-CFLAGS+=$(if $(filter-out yes,$(DEBUG)), -DDEBUG_$(DEBUG))
+CPPFLAGS+=$(if $(filter-out yes,$(DEBUG)), \
+	      $(patsubst %,-DDEBUG_%,$(DEBUG)))
 
 ifeq ("$(enable_testgui)", "no")
 WVTESTRUN=env
@@ -236,14 +214,6 @@ all: runconfigure $(TARGETS)
 dist-hack-clean:
 	@rm -f stamp-h.in
 
-export AM_CFLAGS
-AM_CFLAGS=-fPIC
-
-# Comment this assignment out for a release.
-ifdef PKGSNAPSHOT
-SNAPDATE=+$(shell date +%Y%m%d)
-endif
-
 dist-hook: dist-hack-clean configure
 	@rm -rf autom4te.cache
 
@@ -261,17 +231,6 @@ config.mk: configure config.mk.in
 include/wvautoconf.h: include/wvautoconf.h.in
 	$(call configure)
 
-# FIXME: there is some confusion here
-ifdef WE_ARE_DIST
-aclocal.m4: acinclude.m4
-	$(warning "$@" is old, please run "aclocal")
-
-configure: configure.ac config.mk.in include/wvautoconf.h.in aclocal.m4
-	$(warning "$@" is old, please run "autoconf")
-
-include/wvautoconf.h.in: configure.ac aclocal.m4
-	$(warning "$@" is old, please run "autoheader")
-else
 aclocal.m4: acinclude.m4
 	aclocal
 	@touch $@
@@ -284,40 +243,17 @@ configure: configure.ac include/wvautoconf.h.in aclocal.m4
 include/wvautoconf.h.in: configure.ac aclocal.m4
 	autoheader
 	@touch $@
-endif
-
-ifeq ($(VERBOSE),)
-define wild_clean
-	@list=`echo $(wildcard $(1))`; \
-		test -z "$${list}" || sh -c "rm -rf $${list}"
-endef
-else
-define wild_clean
-	@list=`echo $(wildcard $(1))`; \
-		test -z "$${list}" || sh -cx "rm -rf $${list}"
-endef
-endif
-
-realclean: distclean
-	$(call wild_clean,$(REALCLEAN))
-
 
 distclean: clean
-	$(call wild_clean,$(DISTCLEAN))
+	@rm -rfv .junk $(DISTCLEAN)
 	@rm -rf autom4te.cache
 	@rm -f pkgconfig/*.pc
 
-clean: depend dust
+clean:
 	$(subdirs)
-	$(call wild_clean,$(TARGETS) uniconf/daemon/uniconfd \
+	@rm -rfv .junk $(TARGETS) uniconf/daemon/uniconfd \
 		$(GARBAGE) $(TESTS) tmp.ini \
 		$(shell find . -name '*.o' -o -name '*.moc'))
-
-depend:
-	$(call wild_clean,$(shell find . -name '.*.d'))
-
-dust:
-	$(call wild_clean,$(shell find . -name 'core' -o -name '*~' -o -name '.#*') $(wildcard *.d))
 
 kdoc:
 	kdoc -f html -d Docs/kdoc-html --name wvstreams --strip-h-path */*.h

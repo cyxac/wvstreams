@@ -37,29 +37,6 @@ ifneq ("$(enable_warnings)", "no")
   CFLAGS+=-Wall
 endif
 
-#
-# Figure out which OS we're running (for now, only picks out Linux or BSD)
-#
-OS:=$(shell uname -a | awk '{print $$1}' | sed -e 's/^.*BSD/BSD/g' )
-
-#
-# (Just BSD and LINUX clash with other symbols, so use ISLINUX and ISBSD)
-# This sucks.  Use autoconf for most things!
-#
-ifeq ($(OS),Linux)
-  OSDEFINE:=-DISLINUX
-endif
-
-ifeq ($(OS),BSD)
-  OSDEFINE:=-DISBSD
-endif
-
-ifeq ($(CCMALLOC),1)
- ifeq ($(DEBUG),1)
-   XX_LIBS += -lccmalloc -ldl
- endif
-endif
-
 ifeq ($(DEBUG),1)
   CFLAGS += -ggdb -DDEBUG=1
   CXXFLAGS += -ggdb -DDEBUG=1
