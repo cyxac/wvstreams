@@ -1,39 +1,7 @@
-
-.PHONY: configfile/tests
-configfile/tests: $(patsubst %.cc,%,$(wildcard configfile/tests/*.cc))
-
-TESTS+=$(patsubst %.cc,%,$(wildcard configfile/tests/*.cc))
-TESTS+=$(patsubst %.cc,%,$(wildcard crypto/tests/*.cc))
-
-crypto/tests/certtest: LDFLAGS+=-lssl
-crypto/tests/cryptotest: LDFLAGS+=-lssl
-crypto/tests/md5test: LDFLAGS+=-lssl
-crypto/tests/reqtest: LDFLAGS+=-lssl
-crypto/tests/ssltest: LDFLAGS+=-lssl
-crypto/tests/sslsrvtest: LDFLAGS+=-lssl
-
-dbus/tests: $(patsubst %.cc,%,$(wildcard dbus/tests/*.cc))
-
-TESTS+=$(patsubst %.cc,%,$(wildcard dbus/tests/*.cc))
-
-TARGETS+=examples/wvgrep/wvgrep examples/wvgrep/wvegrep
-
-examples/wvgrep/wvgrep: examples/wvgrep/wvgrep.o $(LIBWVSTREAMS) $(LIBWVUTILS)
-
-examples/wvgrep/wvegrep: examples/wvgrep/wvgrep
-	ln -f $< $@
-
-TESTS+=$(filter-out ipstreams/tests/wsd, $(patsubst %.cc,%,$(wildcard ipstreams/tests/*.cc)))
-ifneq ("$(with_readline)", "no")
-TESTS+=ipstreams/tests/wsd
-endif
-
-ipstreams/tests/xplctest: LIBS+=-lxplc-cxx -lxplc
-ipstreams/tests/wsd: LIBS+=-lxplc-cxx -lxplc -lreadline
-
-linuxstreams/tests: $(patsubst %.cc,%,$(wildcard linuxstreams/tests/*.cc))
-
-TESTS+=$(patsubst %.cc,%,$(wildcard linuxstreams/tests/*.cc))
+WVSTREAMS=.
+WVSTREAMS_SRC= # Clear WVSTREAMS_SRC so wvrules.mk uses its WVSTREAMS_foo
+VPATH=$(libdir)
+include wvrules.mk
 
 qt/wvqtstreamclone.o: include/wvqtstreamclone.moc
 qt/wvqthook.o: include/wvqthook.moc
@@ -48,11 +16,6 @@ qt/tests/qtstringtest: libwvqt.a
 qt/tests/%: LDLIBS+=libwvqt.a
 qt/tests/%: LDLIBS+=-lqt-mt
 # qt/tests/%: CPPFLAGS+=-I/usr/include/qt
-
-streams/tests: $(patsubst %.cc,%,$(wildcard streams/tests/*.cc))
-
-
-TESTS+=$(patsubst %.cc,%,$(wildcard streams/tests/*.cc))
 
 
 CXXFLAGS+=-DWVSTREAMS_RELEASE=\"$(PACKAGE_VERSION)\"
@@ -71,28 +34,11 @@ endif
 %: %.in
 	@sed -e "s/#VERSION#/$(PACKAGE_VERSION)/g" < $< > $@
 
-.PHONY: uniconf/tests
-uniconf/tests: $(patsubst %.cc,%,$(wildcard uniconf/tests/*.cc))
-
 %: %.in
 	@sed -e 's/#VERSION#/$(PACKAGE_VERSION)/g' < $< > $@
 
-TESTS+=$(patsubst %.cc,%,$(wildcard uniconf/tests/*.cc)) uniconf/tests/uni
-
 DISTCLEAN+=uniconf/tests/uni
 
-TESTS+=$(patsubst %.cc,%,$(wildcard urlget/tests/*.cc))
-
-urlget/tests/http2test: LDFLAGS+=-lssl -rdynamic
-
-
-.PHONY: utils/tests
-utils/tests: $(patsubst %.cc,%,$(wildcard utils/tests/*.cc))
-
-
-TESTS+=$(patsubst %.cc,%,$(wildcard utils/tests/*.cc))
-
-utils/tests/encodertest: LDFLAGS+=-lz
 
 CPPFLAGS += -Iinclude -pipe
 ARFLAGS = rs
@@ -143,20 +89,8 @@ ifeq ("$(enable_efence)", "yes")
 LDLIBS+=-lefence
 endif
 
-ifneq ("$(with_bdb)", "no")
-  libwvutils.so-LIBS+=-ldb
-endif
-
-ifneq ("$(with_qdbm)", "no")
-  libwvutils.so-LIBS+=-L. -lqdbm
-endif
-
 libwvbase.so-LIBS+=-lxplc-cxx -lm
 libwvbase.so:
-
-ifneq ("$(with_openslp)", "no")
-  libwvstreams.so: -lslp
-endif
 
 ifneq ("$(with_pam)", "no")
   libwvstreams.so: -lpam
@@ -327,10 +261,6 @@ libwvqt.so: libwvutils.so libwvstreams.so libwvbase.so
 
 libwvgtk.a libwvgtk.so: $(call objects,gtk)
 libwvgtk.so: -lgtk -lgdk libwvstreams.so libwvutils.so libwvbase.so
-WVSTREAMS=.
-WVSTREAMS_SRC= # Clear WVSTREAMS_SRC so wvrules.mk uses its WVSTREAMS_foo
-VPATH=$(libdir)
-include wvrules.mk
 override enable_efence=no
 
 ifneq (${_WIN32},)
