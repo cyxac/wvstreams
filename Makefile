@@ -199,9 +199,9 @@ distclean: clean
 
 clean:
 	$(subdirs)
-	@rm -rfv .junk $(TARGETS) uniconf/daemon/uniconfd \
+	@rm -fv .junk $(TARGETS) uniconf/daemon/uniconfd \
 		$(TESTS) tmp.ini .wvtest-total \
-		$(shell find . -name '*.o' -o -name '*.moc'))
+		$(shell find . -name '*.o' -o -name '*.moc')
 		
 clean-targets:
 	rm -fv $(TARGETS)
