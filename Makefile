@@ -64,6 +64,7 @@ TESTS += $(call tests_cc,utils/tests)
 libwvutils_OBJS += $(filter-out $(BASEOBJS) $(TESTOBJS),$(call objects,utils))
 libwvutils.so: $(libwvutils_OBJS) $(LIBWVBASE)
 libwvutils.so-LIBS += -lz -lcrypt $(LIBS_PAM)
+utils/tests/%: LIBS+=$(LIBWVSTREAMS)
 
 #
 # libwvstreams: stream/event handling library
@@ -85,8 +86,9 @@ libwvstreams_OBJS += $(filter-out $(BASEOBJS), \
 		$(ARCH_SUBDIRS) streams urlget))
 libwvstreams.so: $(libwvstreams_OBJS) $(LIBWVUTILS)
 libwvstreams.so-LIBS += -lz -lssl -lcrypto $(LIBS_PAM)
-crypto/tests/% ipstreams/tests/%: LIBS+=$(LIBWVSTREAMS)
 ipstreams/tests/wsd: LIBS+=-lreadline
+configfile/tests/% streams/tests/% ipstreams/tests/% crypto/tests/% \
+  urlget/tests/% linuxstreams/tests/%: LIBS+=$(LIBWVSTREAMS)
 
 #
 # libuniconf: unified configuration system
@@ -101,6 +103,7 @@ uniconf/daemon/uniconfd uniconf/tests/uni: $(LIBUNICONF)
 uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.o $(LIBUNICONF)
 uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.ini \
           uniconf/daemon/uniconfd.8
+uniconf/tests/%: LIBS+=$(LIBUNICONF)
 
 #
 # libwvdbus: C++ DBus library based on wvstreams
@@ -108,11 +111,11 @@ uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.ini \
 ifneq ("$(with_dbus)", "no")
   TARGETS += dbus/tests/wvdbus dbus/tests/wvdbusd
   TARGETS += libwvdbus.so
-  dbus/tests/wvdbus dbus/tests/wvdbusd: $(LIBWVDBUS)
+  TESTS += $(call tests_cc,dbus/tests)
   libwvdbus_OBJS += $(call objects,dbus)
   libwvdbus.so: $(libwvdbus_OBJS) $(LIBWVSTREAMS)
   libwvdbus.so-LIBS += $(LIBS_DBUS)
-  TESTS += $(call tests_cc,dbus/tests)
+  dbus/tests/%: LIBS+=$(LIBWVDBUS)
 endif
 
 #
@@ -124,13 +127,10 @@ ifneq ("$(with_qt)", "no")
   libwvqt_OBJS += $(call objects,qt)
   libwvqt.so: $(libwvqt_OBJS) $(LIBWVSTREAMS)
   libwvqt.so-LIBS += $(LIBS_QT)
+  qt/tests/%: LIBS+=$(LIBWVQT)
 
   qt/wvqtstreamclone.o: include/wvqtstreamclone.moc
   qt/wvqthook.o: include/wvqthook.moc
-
-  qt/tests/qtstringtest: $(LIBWVQT)
-  qt/tests/%: LIBS+=$(LIBWVQT)
-  qt/tests/%: LIBS+=$(LIBS_QT)
 endif
 
 #
@@ -169,7 +169,6 @@ TARGETS_A = $(filter %.a,$(TARGETS))
 all: $(TARGETS)
 
 TESTS += wvtestmain
-$(TESTS): $(LIBWVDBUS) $(LIBUNICONF) $(LIBWVTEST)
 $(addsuffix .o,$(TESTS)):
 tests: $(TESTS)
 
@@ -206,6 +205,9 @@ clean:
 		
 clean-targets:
 	rm -fv $(TARGETS)
+	
+clean-tests:
+	rm -fv $(TESTS)
 
 kdoc:
 	kdoc -f html -d Docs/kdoc-html --name wvstreams --strip-h-path */*.h
