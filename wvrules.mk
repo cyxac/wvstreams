@@ -51,6 +51,7 @@ endif
 objects=$(sort $(foreach type,c cc,$(call objects_$(type),$1)))
 objects_c=$(patsubst %.c,%.o,$(wildcard $(addsuffix /*.c,$1)))
 objects_cc=$(patsubst %.cc,%.o,$(wildcard $(addsuffix /*.cc,$1)))
+tests_cc=$(patsubst %.cc,%,$(wildcard $(addsuffix /*.cc,$1)))
 
 # default "test" rule does nothing...
 .PHONY: test runtests

@@ -1,5 +1,4 @@
 WVSTREAMS=.
-export WVSTREAMS
 
 include wvrules.mk
 
@@ -12,7 +11,10 @@ endif
 
 LIBS += $(LIBS_XPLC) -lm
 
-BASEOBJS= \
+#
+# libwvbase: a the minimal code needed to link a wvstreams program.
+#
+BASEOBJS = \
 	utils/wvbuffer.o utils/wvbufferstore.o \
 	utils/wvcont.o \
 	utils/wverror.o \
@@ -49,32 +51,49 @@ BASEOBJS= \
 	streams/wvstreamclone.o  \
 	streams/wvconstream.o \
 	utils/wvcrashbase.o
-
 TARGETS += libwvbase.so
 libwvbase_OBJS += $(filter-out uniconf/unigenhack.o,$(BASEOBJS))
 libwvbase.so: $(libwvbase_OBJS) uniconf/unigenhack.o
 libwvbase.so-LIBS += $(LIBXPLC)
 
+#
+# libwvutils: handy utility library for C++
+#
 TARGETS += libwvutils.so
+TESTS += $(call tests_cc,utils/tests)
 libwvutils_OBJS += $(filter-out $(BASEOBJS) $(TESTOBJS),$(call objects,utils))
 libwvutils.so: $(libwvutils_OBJS) $(LIBWVBASE)
 libwvutils.so-LIBS += -lz -lcrypt $(LIBS_PAM)
 
+#
+# libwvstreams: stream/event handling library
+#
 TARGETS += libwvstreams.so
 TARGETS += crypto/tests/ssltest ipstreams/tests/unixtest
 TARGETS += crypto/tests/printcert
 ifneq ("$(with_readline)", "no")
   TARGETS += ipstreams/tests/wsd
 endif
+TESTS += $(call tests_cc,configfile/tests)
+TESTS += $(call tests_cc,streams/tests)
+TESTS += $(filter-out ipstreams/tests/wsd, $(call tests_cc,ipstreams/tests))
+TESTS += $(call tests_cc,crypto/tests)
+TESTS += $(call tests_cc,urlget/tests)
+TESTS += $(call tests_cc,linuxstreams/tests)
 libwvstreams_OBJS += $(filter-out $(BASEOBJS), \
 	$(call objects,configfile crypto ipstreams \
 		$(ARCH_SUBDIRS) streams urlget))
 libwvstreams.so: $(libwvstreams_OBJS) $(LIBWVUTILS)
 libwvstreams.so-LIBS += -lz -lssl -lcrypto $(LIBS_PAM)
 crypto/tests/% ipstreams/tests/%: LIBS+=$(LIBWVSTREAMS)
+ipstreams/tests/wsd: LIBS+=-lreadline
 
+#
+# libuniconf: unified configuration system
+#
 TARGETS += libuniconf.so
 TARGETS += uniconf/daemon/uniconfd uniconf/tests/uni
+TESTS += $(call tests_cc,uniconf/tests) uniconf/tests/uni
 libuniconf_OBJS += $(filter-out $(BASEOBJS) uniconf/daemon/uniconfd.o, \
 	$(call objects,uniconf uniconf/daemon))
 libuniconf.so: $(libuniconf_OBJS) $(LIBWVSTREAMS)
@@ -83,6 +102,9 @@ uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.o $(LIBUNICONF)
 uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.ini \
           uniconf/daemon/uniconfd.8
 
+#
+# libwvdbus: C++ DBus library based on wvstreams
+#
 ifneq ("$(with_dbus)", "no")
   TARGETS += dbus/tests/wvdbus dbus/tests/wvdbusd
   TARGETS += libwvdbus.so
@@ -90,8 +112,12 @@ ifneq ("$(with_dbus)", "no")
   libwvdbus_OBJS += $(call objects,dbus)
   libwvdbus.so: $(libwvdbus_OBJS) $(LIBWVSTREAMS)
   libwvdbus.so-LIBS += $(LIBS_DBUS)
+  TESTS += $(call tests_cc,dbus/tests)
 endif
 
+#
+# libwvqt: helper library to make WvStreams work better in Qt event loops
+#
 ifneq ("$(with_qt)", "no")
   TARGETS += libwvqt.so
   TESTS += $(patsubst %.cc,%,$(wildcard qt/tests/*.cc))
@@ -107,6 +133,10 @@ ifneq ("$(with_qt)", "no")
   qt/tests/%: LIBS+=$(LIBS_QT)
 endif
 
+#
+# libwvstatic.a: all the wvstreams libraries in one static .a file, to make
+# it easy to link your programs statically to wvstreams.
+#
 TARGETS += libwvstatic.a
 libwvstatic.a: \
 	$(libwvbase_OBJS) \
@@ -117,20 +147,48 @@ libwvstatic.a: \
 	$(libwvqt_OBJS) \
 	uniconf/unigenhack_s.o
 
+#
+# libwvtest: the WvTest tools for writing C++ unit tests
+#
 TARGETS += wvtestmain.o libwvtest.a
 TESTOBJS = utils/wvtest.o
 libwvtest.a: wvtestmain.o $(TESTOBJS)
+
+#
+# Some example programs
+#
+TARGETS += examples/wvgrep/wvgrep examples/wvgrep/wvegrep
+examples/wvgrep/wvgrep: examples/wvgrep/wvgrep.o $(LIBWVSTREAMS) ;;
+examples/wvgrep/wvegrep: examples/wvgrep/wvgrep
+	ln -f $< $@
+
 
 TARGETS_SO = $(filter %.so,$(TARGETS))
 TARGETS_A = $(filter %.a,$(TARGETS))
 
 all: $(TARGETS)
 
-.PHONY: \
-	clean distclean \
-	kdoc doxygen \
-	install install-shared install-dev uninstall \
-	tests test
+TESTS += wvtestmain
+$(TESTS): $(LIBWVDBUS) $(LIBUNICONF) $(LIBWVTEST)
+$(addsuffix .o,$(TESTS)):
+tests: $(TESTS)
+
+test: all tests qtest
+
+qtest: all wvtestmain
+	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH):$(WVSTREAMS_LIB)" $(WVTESTRUN) $(MAKE) runtests
+
+runtests:
+	$(VALGRIND) ./wvtestmain '$(TESTNAME)'
+ifeq ("$(TESTNAME)", "unitest")
+	cd uniconf/tests && DAEMON=0 ./unitest.sh
+	cd uniconf/tests && DAEMON=1 ./unitest.sh
+endif
+
+wvtestmain: \
+	$(call objects, $(filter-out ./Win32WvStreams/%, \
+		$(shell find . -type d -name t))) \
+	$(LIBWVDBUS) $(LIBUNICONF) $(LIBWVSTREAMS) $(LIBWVTEST)
 
 distclean: clean
 	rm -f uniconf/daemon/uniconfd.8 uniconf/tests/uni
@@ -155,3 +213,8 @@ kdoc:
 doxygen:
 	doxygen
 
+.PHONY: \
+	clean distclean \
+	kdoc doxygen \
+	install install-shared install-dev uninstall \
+	tests test
