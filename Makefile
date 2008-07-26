@@ -186,7 +186,7 @@ ifeq ("$(TESTNAME)", "unitest")
 endif
 
 wvtestmain: \
-	$(call objects, $(filter-out ./Win32WvStreams/%, \
+	$(call objects, $(filter-out ./win32/%, \
 		$(shell find . -type d -name t))) \
 	$(LIBWVDBUS) $(LIBUNICONF) $(LIBWVSTREAMS) $(LIBWVTEST)
 
