@@ -191,7 +191,7 @@ wvtestmain: \
 
 distclean: clean
 	rm -f uniconf/daemon/uniconfd.8 uniconf/tests/uni
-	rm -f autom4te.cache config.mk config.log config.status \
+	rm -f config.mk config.log config.status \
 		include/wvautoconf.h config.cache reconfigure \
 		stamp-h.in configure include/wvautoconf.h.in
 	rm -rf autom4te.cache
@@ -200,8 +200,10 @@ distclean: clean
 clean:
 	$(subdirs)
 	@rm -fv .junk $(TARGETS) uniconf/daemon/uniconfd \
-		$(TESTS) tmp.ini .wvtest-total \
-		$(shell find . -name '*.o' -o -name '*.moc')
+		$(TESTS) tmp*.ini uniconf/daemon/uniconfd.ini \
+		.wvtest-total \
+		$(shell find . -name '*.o' -o -name '.*.d' \
+			-o -name '*~' -o -name '*.moc')
 		
 clean-targets:
 	rm -fv $(TARGETS)
