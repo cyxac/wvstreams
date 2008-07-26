@@ -158,7 +158,7 @@ libwvtest.a: wvtestmain.o $(TESTOBJS)
 # Some example programs
 #
 TARGETS += examples/wvgrep/wvgrep examples/wvgrep/wvegrep
-examples/wvgrep/wvgrep: examples/wvgrep/wvgrep.o $(LIBWVSTREAMS) ;;
+examples/wvgrep/wvgrep: examples/wvgrep/wvgrep.o $(LIBWVSTREAMS)
 examples/wvgrep/wvegrep: examples/wvgrep/wvgrep
 	ln -f $< $@
 

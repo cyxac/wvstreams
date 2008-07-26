@@ -150,10 +150,7 @@ $(addsuffix .o,$(basename $(wildcard *.c) $(wildcard *.cc) $(wildcard *.cpp))):
 # dependencies are stored in the file ".filename.d", and we include them
 # automatically here if they exist.
 #
-depfiles_sf = $(wildcard .*.d t/.*.d)
-ifneq ($(depfiles_sf),)
-  -include $(depfiles_sf)
-endif
+-include $(shell find . -name '.*.d') /dev/null
 
 
 #
