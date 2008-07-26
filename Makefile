@@ -1,36 +1,16 @@
 WVSTREAMS=.
-include wvrules.mk
+export WVSTREAMS
 
+include wvrules.mk
 
 %: %.in
 	@sed -e 's/#VERSION#/$(PACKAGE_VERSION)/g' < $< > $@
-
 
 ifeq ("$(enable_testgui)", "no")
   WVTESTRUN=env
 endif
 
-GARBAGE += wvtestmain.o tmp.ini .wvtest-total
-
-TARGETS_SO = $(filter %.so,$(TARGETS))
-TARGETS_A = $(filter %.a,$(TARGETS))
-
-GARBAGE += $(wildcard lib*.so.*)
-
-DISTCLEAN += uniconf/daemon/uniconfd.8
-DISTCLEAN += uniconf/tests/uni
-DISTCLEAN += autom4te.cache config.mk config.log config.status \
-		include/wvautoconf.h config.cache reconfigure \
-		stamp-h.in configure include/wvautoconf.h.in
-
-ifeq ("$(enable_testgui)", "no")
-WVTESTRUN=env
-endif
-
-ifneq ("$(with_xplc)", "no")
-LIBS+=$(LIBS_XPLC) -lm
-endif
-
+LIBS += $(LIBS_XPLC) -lm
 
 BASEOBJS= \
 	utils/wvbuffer.o utils/wvbufferstore.o \
@@ -76,34 +56,29 @@ libwvbase.so: $(libwvbase_OBJS) uniconf/unigenhack.o
 libwvbase.so-LIBS += $(LIBXPLC)
 
 TARGETS += libwvutils.so
-libwvutils.so-LIBS+=$(LIBS_PAM)
 libwvutils_OBJS += $(filter-out $(BASEOBJS) $(TESTOBJS),$(call objects,utils))
 libwvutils.so: $(libwvutils_OBJS) $(LIBWVBASE)
-libwvutils.so-LIBS += -lz -lcrypt
+libwvutils.so-LIBS += -lz -lcrypt $(LIBS_PAM)
 
 TARGETS += libwvstreams.so
 TARGETS += crypto/tests/ssltest ipstreams/tests/unixtest
 TARGETS += crypto/tests/printcert
-crypto/tests/% ipstreams/tests/%: LIBS+=$(LIBWVSTREAMS)
+ifneq ("$(with_readline)", "no")
+  TARGETS += ipstreams/tests/wsd
+endif
 libwvstreams_OBJS += $(filter-out $(BASEOBJS), \
 	$(call objects,configfile crypto ipstreams \
 		$(ARCH_SUBDIRS) streams urlget))
 libwvstreams.so: $(libwvstreams_OBJS) $(LIBWVUTILS)
-libwvstreams.so-LIBS += -lz -lssl -lcrypto 
-ifneq ("$(with_pam)", "no")
-  libwvstreams.so-LIBS += -lpam
-endif
-ifneq ("$(with_readline)", "no")
-  TARGETS += ipstreams/tests/wsd
-endif
+libwvstreams.so-LIBS += -lz -lssl -lcrypto $(LIBS_PAM)
+crypto/tests/% ipstreams/tests/%: LIBS+=$(LIBWVSTREAMS)
 
 TARGETS += libuniconf.so
 TARGETS += uniconf/daemon/uniconfd uniconf/tests/uni
-uniconf/daemon/uniconfd uniconf/tests/uni: $(LIBUNICONF)
 libuniconf_OBJS += $(filter-out $(BASEOBJS) uniconf/daemon/uniconfd.o, \
 	$(call objects,uniconf uniconf/daemon))
 libuniconf.so: $(libuniconf_OBJS) $(LIBWVSTREAMS)
-libuniconf.a: uniconf/uniconfroot.o
+uniconf/daemon/uniconfd uniconf/tests/uni: $(LIBUNICONF)
 uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.o $(LIBUNICONF)
 uniconf/daemon/uniconfd: uniconf/daemon/uniconfd.ini \
           uniconf/daemon/uniconfd.8
@@ -146,21 +121,29 @@ TARGETS += wvtestmain.o libwvtest.a
 TESTOBJS = utils/wvtest.o
 libwvtest.a: wvtestmain.o $(TESTOBJS)
 
-export WVSTREAMS
+TARGETS_SO = $(filter %.so,$(TARGETS))
+TARGETS_A = $(filter %.a,$(TARGETS))
 
 all: $(TARGETS)
 
-.PHONY: clean depend dust kdoc doxygen install install-shared install-dev uninstall tests dishes dist distclean realclean test
+.PHONY: \
+	clean distclean \
+	kdoc doxygen \
+	install install-shared install-dev uninstall \
+	tests test
 
 distclean: clean
-	@rm -rfv .junk $(DISTCLEAN)
-	@rm -rf autom4te.cache
-	@rm -f pkgconfig/*.pc
+	rm -f uniconf/daemon/uniconfd.8 uniconf/tests/uni
+	rm -f autom4te.cache config.mk config.log config.status \
+		include/wvautoconf.h config.cache reconfigure \
+		stamp-h.in configure include/wvautoconf.h.in
+	rm -rf autom4te.cache
+	rm -f pkgconfig/*.pc
 
 clean:
 	$(subdirs)
 	@rm -rfv .junk $(TARGETS) uniconf/daemon/uniconfd \
-		$(GARBAGE) $(TESTS) tmp.ini \
+		$(TESTS) tmp.ini .wvtest-total \
 		$(shell find . -name '*.o' -o -name '*.moc'))
 		
 clean-targets:
